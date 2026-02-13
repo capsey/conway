@@ -1,0 +1,4 @@
+**/*.o
+**/*.d
+conway
+compile_commands.json
