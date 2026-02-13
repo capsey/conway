@@ -2,53 +2,32 @@
 
 #include <cmath>
 #include <iostream>
-#include <mutex>
-#include <shared_mutex>
 
-void BitBoard::draw(sf::RenderTarget &target, sf::RenderStates states) const
+BitBoard BitBoard::set(sf::Vector2i pos, bool state) const
 {
-    states.transform *= getTransform();
-    auto current = chunks.load();
+    BitBoard board = *this;
 
-    for (auto it = current->begin(); it != current->end(); it++)
-    {
-        ChunkRenderer chunk(it->second, color);
-        chunk.setPosition(static_cast<sf::Vector2f>(it->first * 8));
-        target.draw(chunk, states);
-    }
-}
-
-void BitBoard::set(sf::Vector2i pos, bool state)
-{
     sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
     int i = (localPos.y * 8) + localPos.x;
     uint64_t mask = 1ULL << i;
 
-    while (true)
+    auto entry = board.chunks.find(chunkPos);
+
+    if (entry != board.chunks.end())
     {
-        auto current = chunks.load();
-        std::unordered_map<sf::Vector2i, uint64_t> newChunks = *current;
-
-        auto entry = newChunks.find(chunkPos);
-
-        if (entry != newChunks.end())
-        {
-            uint64_t x = state ? entry->second | mask : entry->second & ~mask;
-            if (x)
-                entry->second = x;
-            else
-                newChunks.erase(entry);
-        }
-        else if (state)
-        {
-            newChunks[chunkPos] = mask;
-        }
-
-        if (chunks.compare_exchange_strong(current, std::make_shared<const std::unordered_map<sf::Vector2i, uint64_t>>(std::move(newChunks))))
-            break;
+        if (uint64_t x = state ? entry->second | mask : entry->second & ~mask)
+            entry->second = x;
+        else
+            board.chunks.erase(entry);
     }
+    else if (state)
+    {
+        board.chunks[chunkPos] = mask;
+    }
+
+    return board;
 }
 
 bool BitBoard::get(sf::Vector2i pos) const
@@ -58,64 +37,41 @@ bool BitBoard::get(sf::Vector2i pos) const
 
     int i = (localPos.y * 8) + localPos.x;
 
-    auto current = chunks.load();
-    auto entry = current->find(chunkPos);
+    auto entry = chunks.find(chunkPos);
 
-    if (entry != current->end())
+    if (entry != chunks.end())
         return entry->second >> i;
 
     return false;
 }
 
-void BitBoard::clear()
-{
-    chunks = std::make_shared<const std::unordered_map<sf::Vector2i, uint64_t>>();
-}
-
 BitBoard &BitBoard::operator|=(const BitBoard &other)
 {
-    auto otherCurrent = other.chunks.load();
-
-    while (true)
+    for (auto it = other.chunks.begin(); it != other.chunks.end(); it++)
     {
-        auto current = chunks.load();
-        std::unordered_map<sf::Vector2i, uint64_t> newChunks = *current;
+        auto entry = chunks.find(it->first);
 
-        for (auto it = otherCurrent->begin(); it != otherCurrent->end(); it++)
-        {
-            auto entry = newChunks.find(it->first);
-
-            if (entry != newChunks.end())
-                entry->second |= it->second;
-            else
-                newChunks[it->first] = it->second;
-        }
-
-        if (chunks.compare_exchange_strong(current, std::make_shared<const std::unordered_map<sf::Vector2i, uint64_t>>(std::move(newChunks))))
-            return *this;
+        if (entry != chunks.end())
+            entry->second |= it->second;
+        else
+            chunks[it->first] = it->second;
     }
+
+    return *this;
 }
 
 BitBoard &BitBoard::operator-=(const BitBoard &other)
 {
-    auto otherCurrent = other.chunks.load();
-
-    while (true)
+    for (auto it = other.chunks.begin(); it != other.chunks.end(); it++)
     {
-        auto current = chunks.load();
-        auto newChunks = std::make_shared<std::unordered_map<sf::Vector2i, uint64_t>>(*current);
+        auto entry = chunks.find(it->first);
 
-        for (auto it = otherCurrent->begin(); it != otherCurrent->end(); it++)
-        {
-            auto entry = newChunks->find(it->first);
-
-            if (entry != newChunks->end())
-                entry->second &= ~it->second;
-        }
-
-        if (chunks.compare_exchange_strong(current, std::move(newChunks)))
-            return *this;
+        if (entry != chunks.end())
+            if (!(entry->second &= ~it->second))
+                chunks.erase(entry);
     }
+
+    return *this;
 }
 
 inline static std::pair<uint64_t, uint64_t> halfAdder(uint64_t a, uint64_t b)
@@ -144,7 +100,7 @@ inline static std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> adder3(uint64_t
     return {s0, s1, s2, c2};
 }
 
-inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vector2i, uint64_t>> &current, sf::Vector2i pos, uint64_t x, std::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
+inline static uint64_t process(const BitBoard &board, sf::Vector2i pos, uint64_t x, std::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
 {
     uint64_t x0 = (x << 1) & 0xFEFEFEFEFEFEFEFEULL; // left neighbor
     uint64_t x1 = (x >> 1) & 0x7F7F7F7F7F7F7F7FULL; // right neighbor
@@ -157,9 +113,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // left border
     sf::Vector2i borderPos = pos + sf::Vector2i(-1, 0);
-    auto entry = current->find(borderPos);
+    auto entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x0 |= (y >> 7) & 0x0101010101010101ULL;
@@ -173,9 +129,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // right border
     borderPos = pos + sf::Vector2i(1, 0);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x1 |= (y << 7) & 0x8080808080808080ULL;
@@ -189,9 +145,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // upper border
     borderPos = pos + sf::Vector2i(0, -1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x2 |= y >> 56;
@@ -205,9 +161,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // lower border
     borderPos = pos + sf::Vector2i(0, 1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x3 |= y << 56;
@@ -221,9 +177,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // upper left corner
     borderPos = pos + sf::Vector2i(-1, -1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x4 |= y >> 63;
@@ -231,9 +187,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // upper right corner
     borderPos = pos + sf::Vector2i(1, -1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x6 |= (y >> 49) & 0x0000000000000080ULL;
@@ -241,9 +197,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // lower left corner
     borderPos = pos + sf::Vector2i(-1, 1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x5 |= (y << 49) & 0x0100000000000000ULL;
@@ -251,9 +207,9 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
 
     // lower right corner
     borderPos = pos + sf::Vector2i(1, 1);
-    entry = current->find(borderPos);
+    entry = board.chunks.find(borderPos);
 
-    if (entry != current->end())
+    if (entry != board.chunks.end())
     {
         uint64_t y = entry->second;
         x7 |= y << 63;
@@ -275,27 +231,27 @@ inline static uint64_t process(std::shared_ptr<const std::unordered_map<sf::Vect
     return r1 & ~r2 & (r0 | x);
 }
 
-void LifeBoard::tick()
+LifeBoard LifeBoard::tick() const
 {
-    while (true)
-    {
-        auto current = chunks.load();
+    LifeBoard result = *this;
+    result.ticks++;
 
-        std::unordered_map<sf::Vector2i, uint64_t> newChunks;
-        std::unordered_set<sf::Vector2i> potentialChunks;
-        newChunks.reserve(current->size());
+    std::unordered_set<sf::Vector2i> potentialChunks;
 
-        for (auto it = current->begin(); it != current->end(); it++)
-            if (uint64_t y = process(current, it->first, it->second, &potentialChunks))
-                newChunks[it->first] = y;
+    for (auto it = board.chunks.begin(); it != board.chunks.end(); it++)
+        if (uint64_t y = process(board, it->first, it->second, &potentialChunks))
+        {
+            if (y != it->second)
+                result.board.chunks[it->first] = y;
+        }
+        else
+            result.board.chunks.erase(it->first);
 
-        for (auto &pos : potentialChunks)
-            if (uint64_t y = process(current, pos, 0))
-                newChunks[pos] = y;
+    for (auto &pos : potentialChunks)
+        if (uint64_t y = process(board, pos, 0))
+            result.board.chunks[pos] = y;
 
-        if (chunks.compare_exchange_strong(current, std::make_shared<const std::unordered_map<sf::Vector2i, uint64_t>>(std::move(newChunks))))
-            break;
-    }
+    return result;
 }
 
 static sf::Texture _texture;
@@ -341,4 +297,22 @@ void ChunkRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) cons
 
         states.transform = states.transform.translate({0, 1});
     }
+}
+
+void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
+{
+    states.transform *= getTransform();
+
+    for (auto it = data.chunks.begin(); it != data.chunks.end(); it++)
+    {
+        ChunkRenderer chunk(it->second, color);
+        chunk.setPosition(static_cast<sf::Vector2f>(it->first * 8));
+        target.draw(chunk, states);
+    }
+}
+
+void LifeBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
+{
+    BitBoardRenderer renderer(data.board, color);
+    target.draw(renderer, states);
 }

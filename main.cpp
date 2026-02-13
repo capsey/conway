@@ -9,7 +9,10 @@ void LifeWindow::tickingThread()
     while (running)
     {
         lock.unlock();
-        board.tick();
+        lifeBoard.modify([](const LifeBoard &lifeBoard)
+        {
+            return lifeBoard.tick();
+        });
         lock.lock();
 
         if (step > 0)
@@ -22,7 +25,7 @@ void LifeWindow::tickingThread()
     }
 }
 
-LifeWindow::LifeWindow(unsigned int width, unsigned int height) : Window(width, height, "Conway's Game of Life", BackgroundColor), board(CellColor), drawBuffer(CellColor), eraseBuffer(BackgroundColor), thread(&LifeWindow::tickingThread, this)
+LifeWindow::LifeWindow(unsigned int width, unsigned int height) : Window(width, height, "Conway's Game of Life", BackgroundColor), thread(&LifeWindow::tickingThread, this)
 {
     addEventHandler<sf::Event::KeyPressed>([&](const sf::Event::KeyPressed &event)
     {
@@ -31,7 +34,6 @@ LifeWindow::LifeWindow(unsigned int width, unsigned int height) : Window(width, 
             std::lock_guard lock(mutex);
             paused = !paused;
             background = paused ? PausedColor : BackgroundColor;
-            eraseBuffer.color = paused ? PausedColor : BackgroundColor;
             condition.notify_all();
         }
 
@@ -43,63 +45,120 @@ LifeWindow::LifeWindow(unsigned int width, unsigned int height) : Window(width, 
         }
 
         if (event.scancode == sf::Keyboard::Scan::Delete)
-            board.clear();
+            lifeBoard.reset();
     });
 
     addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
     {
         if (event.button == sf::Mouse::Button::Left)
         {
-            board |= drawBuffer;
-            drawBuffer.clear();
+            lifeBoard.modify([&](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard | *drawBuffer.getData();
+            });
+            drawBuffer.reset();
         }
 
         if (event.button == sf::Mouse::Button::Right)
         {
-            board -= eraseBuffer;
-            eraseBuffer.clear();
+            lifeBoard.modify([&](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard - *eraseBuffer.getData();
+            });
+            eraseBuffer.reset();
         }
     });
 }
 
-inline static void gridTraversal(sf::Vector2f p0, sf::Vector2f p1, std::function<void(sf::Vector2i)> func)
+inline static sf::Vector2i floor(sf::Vector2f p)
 {
-    float dx = p1.x - p0.x;
-    float dy = p1.y - p0.y;
+    return {(int)std::floor(p.x), (int)std::floor(p.y)};
+}
 
-    int x = static_cast<int>(std::floor(p0.x));
-    int y = static_cast<int>(std::floor(p0.y));
+// https://dedu.fr/projects/bresenham/
+inline static void gridTraversal(sf::Vector2f p1, sf::Vector2f p2, std::function<void(sf::Vector2i)> func)
+{
+    int ystep, xstep;
+    sf::Vector2i d = floor(p2) - floor(p1);
 
-    int endX = static_cast<int>(std::floor(p1.x));
-    int endY = static_cast<int>(std::floor(p1.y));
-
-    // clang-format off
-    int stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
-    int stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
-
-    float tDeltaX = dx != 0.0f ? std::abs(1.0f / dx) : std::numeric_limits<float>::infinity();
-    float tDeltaY = dy != 0.0f ? std::abs(1.0f / dy) : std::numeric_limits<float>::infinity();
-
-    float tMaxX = dx > 0 ? (std::floor(p0.x) + 1 - p0.x) / dx : dx < 0 ? (p0.x - std::floor(p0.x)) / -dx : std::numeric_limits<float>::infinity();
-    float tMaxY = dy > 0 ? (std::floor(p0.y) + 1 - p0.y) / dy : dy < 0 ? (p0.y - std::floor(p0.y)) / -dy : std::numeric_limits<float>::infinity();
-    // clang-format on
-
-    func({x, y});
-
-    while (x != endX || y != endY)
+    if (d.y < 0)
     {
-        if (tMaxX < tMaxY)
-        {
-            x += stepX;
-            tMaxX += tDeltaX;
-        }
-        else
-        {
-            y += stepY;
-            tMaxY += tDeltaY;
-        }
+        ystep = -1;
+        d.y = -d.y;
+    }
+    else
+        ystep = 1;
+    if (d.x < 0)
+    {
+        xstep = -1;
+        d.x = -d.x;
+    }
+    else
+        xstep = 1;
 
-        func({x, y});
+    sf::Vector2i dd = 2 * d;
+    sf::Vector2i p = floor(p1);
+    func(p);
+
+    if (dd.x >= dd.y)
+    {
+        int errorprev = d.x;
+        int error = d.x;
+
+        for (int i = 0; i < d.x; i++)
+        {
+            p.x += xstep;
+            error += dd.y;
+
+            if (error > dd.x)
+            {
+                p.y += ystep;
+                error -= dd.x;
+
+                if (error + errorprev < dd.x)
+                    func({p.x, p.y - ystep});
+                else if (error + errorprev > dd.x)
+                    func({p.x - xstep, p.y});
+                else
+                {
+                    func({p.x, p.y - ystep});
+                    func({p.x - xstep, p.y});
+                }
+            }
+
+            func(p);
+            errorprev = error;
+        }
+    }
+    else
+    {
+        int errorprev = d.y;
+        int error = d.y;
+
+        for (int i = 0; i < d.y; i++)
+        {
+            p.y += ystep;
+            error += dd.x;
+
+            if (error > dd.y)
+            {
+                p.x += xstep;
+                error -= dd.y;
+
+                if (error + errorprev < dd.y)
+                    func({p.x - xstep, p.y});
+                else if (error + errorprev > dd.y)
+                    func({p.x, p.y - ystep});
+                else
+                {
+                    func({p.x - xstep, p.y});
+                    func({p.x, p.y - ystep});
+                }
+            }
+
+            func(p);
+            errorprev = error;
+        }
     }
 }
 
@@ -108,21 +167,32 @@ void LifeWindow::update()
     if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
         gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
         {
-            drawBuffer.set(pos, true);
+            drawBuffer.modify([=](const BitBoard &drawBuffer)
+            {
+                return drawBuffer.set(pos, true);
+            });
         });
 
     if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
         gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
         {
-            eraseBuffer.set(pos, true);
+            eraseBuffer.modify([=](const BitBoard &eraseBuffer)
+            {
+                return eraseBuffer.set(pos, true);
+            });
         });
 }
 
 void LifeWindow::draw()
 {
-    window.draw(board);
-    window.draw(drawBuffer);
-    window.draw(eraseBuffer);
+    std::shared_ptr<const LifeBoard> lifeBoardPtr = lifeBoard.getData();
+    window.draw(LifeBoardRenderer(*lifeBoardPtr, CellColor));
+
+    std::shared_ptr<const BitBoard> drawBufferPtr = drawBuffer.getData();
+    window.draw(BitBoardRenderer(*drawBufferPtr, CellColor));
+
+    std::shared_ptr<const BitBoard> eraseBufferPtr = eraseBuffer.getData();
+    window.draw(BitBoardRenderer(*eraseBufferPtr, background));
 }
 
 LifeWindow::~LifeWindow()

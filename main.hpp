@@ -13,9 +13,9 @@ protected:
     static constexpr sf::Color PausedColor = sf::Color(32, 32, 32);
     static constexpr sf::Color CellColor = sf::Color::White;
 
-    LifeBoard board;
-    BitBoard drawBuffer;
-    BitBoard eraseBuffer;
+    Container<LifeBoard> lifeBoard;
+    Container<BitBoard> drawBuffer;
+    Container<BitBoard> eraseBuffer;
 
     std::mutex mutex;
     std::condition_variable condition;

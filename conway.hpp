@@ -2,8 +2,8 @@
 
 #include <SFML/Graphics.hpp>
 #include <atomic>
-#include <iostream>
-#include <shared_mutex>
+#include <functional>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -21,32 +21,94 @@ namespace std
     };
 }
 
-class BitBoard : public sf::Transformable, public sf::Drawable
+template <typename T>
+class Container
 {
-protected:
-    std::atomic<std::shared_ptr<const std::unordered_map<sf::Vector2i, uint64_t>>> chunks;
+private:
+    std::atomic<std::shared_ptr<const T>> data;
 
 public:
-    sf::Color color;
+    Container() : data(std::make_shared<const T>()) {}
+    Container(T value) : data(std::make_shared<const T>(std::move(value))) {}
 
-    BitBoard(sf::Color color = sf::Color::White) : chunks(std::make_shared<const std::unordered_map<sf::Vector2i, uint64_t>>()), color(color) {}
+    std::shared_ptr<const T> getData()
+    {
+        return data.load();
+    }
 
-    void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
+    void modify(std::function<T(const T &)> func)
+    {
+        while (true)
+        {
+            auto expected = data.load();
+            auto modified = std::make_shared<const T>(func(*expected));
 
-    void set(sf::Vector2i pos, bool state);
+            if (data.compare_exchange_strong(expected, modified))
+                break;
+        }
+    }
+
+    void reset()
+    {
+        data.store(std::make_shared<const T>());
+    }
+};
+
+class BitBoard
+{
+public:
+    std::unordered_map<sf::Vector2i, uint64_t> chunks;
+
+    BitBoard set(sf::Vector2i pos, bool state) const;
     bool get(sf::Vector2i pos) const;
-    void clear();
 
     BitBoard &operator|=(const BitBoard &other);
     BitBoard &operator-=(const BitBoard &other);
+
+    friend BitBoard operator|(BitBoard lhs, const BitBoard &rhs)
+    {
+        lhs |= rhs;
+        return lhs;
+    }
+
+    friend BitBoard operator-(BitBoard lhs, const BitBoard &rhs)
+    {
+        lhs -= rhs;
+        return lhs;
+    }
 };
 
-class LifeBoard : public BitBoard
+class LifeBoard
 {
 public:
-    LifeBoard(sf::Color color = sf::Color::White) : BitBoard(color) {}
+    BitBoard board;
+    unsigned int ticks = 0;
 
-    void tick();
+    LifeBoard tick() const;
+
+    LifeBoard &operator|=(const BitBoard &other)
+    {
+        board |= other;
+        return *this;
+    }
+
+    LifeBoard &operator-=(const BitBoard &other)
+    {
+        board -= other;
+        return *this;
+    }
+
+    friend LifeBoard operator|(LifeBoard lhs, const BitBoard &rhs)
+    {
+        lhs |= rhs;
+        return lhs;
+    }
+
+    friend LifeBoard operator-(LifeBoard lhs, const BitBoard &rhs)
+    {
+        lhs -= rhs;
+        return lhs;
+    }
 };
 
 class ChunkRenderer : public sf::Transformable, public sf::Drawable
@@ -54,13 +116,37 @@ class ChunkRenderer : public sf::Transformable, public sf::Drawable
 private:
     static const sf::Texture &texture;
 
-public:
-    static void initializeSprites();
-
     uint64_t data;
     sf::Color color;
 
+public:
+    static void initializeSprites();
+
     ChunkRenderer(uint64_t data, sf::Color color) : data(data), color(color) {}
+
+    void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
+};
+
+class BitBoardRenderer : public sf::Transformable, public sf::Drawable
+{
+private:
+    const BitBoard &data;
+    sf::Color color;
+
+public:
+    BitBoardRenderer(const BitBoard &data, sf::Color color) : data(data), color(color) {}
+
+    void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
+};
+
+class LifeBoardRenderer : public sf::Transformable, public sf::Drawable
+{
+private:
+    const LifeBoard &data;
+    sf::Color color;
+
+public:
+    LifeBoardRenderer(const LifeBoard &data, sf::Color color) : data(data), color(color) {}
 
     void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };
