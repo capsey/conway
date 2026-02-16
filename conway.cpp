@@ -3,31 +3,27 @@
 #include <cmath>
 #include <iostream>
 
-BitBoard BitBoard::set(sf::Vector2i pos, bool state) const
+void BitBoard::set(sf::Vector2i pos, bool state)
 {
-    BitBoard board = *this;
-
     sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
     int i = (localPos.y * 8) + localPos.x;
     uint64_t mask = 1ULL << i;
 
-    auto entry = board.chunks.find(chunkPos);
+    auto entry = chunks.find(chunkPos);
 
-    if (entry != board.chunks.end())
+    if (entry != chunks.end())
     {
         if (uint64_t x = state ? entry->second | mask : entry->second & ~mask)
             entry->second = x;
         else
-            board.chunks.erase(entry);
+            chunks.erase(entry);
     }
     else if (state)
     {
-        board.chunks[chunkPos] = mask;
+        chunks[chunkPos] = mask;
     }
-
-    return board;
 }
 
 bool BitBoard::get(sf::Vector2i pos) const

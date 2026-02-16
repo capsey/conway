@@ -61,7 +61,7 @@ class BitBoard
 public:
     std::unordered_map<sf::Vector2i, uint64_t> chunks;
 
-    BitBoard set(sf::Vector2i pos, bool state) const;
+    void set(sf::Vector2i pos, bool state);
     bool get(sf::Vector2i pos) const;
 
     BitBoard &operator|=(const BitBoard &other);

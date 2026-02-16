@@ -96,19 +96,29 @@ void LifeWindow::tickingThread()
 
         while (running)
         {
-            lock.unlock();
-            lifeBoard.modify([](const LifeBoard &lifeBoard)
+            if (!paused)
             {
-                return lifeBoard.tick();
-            });
-            lock.lock();
+                lock.unlock();
+                lifeBoard.modify([](const LifeBoard &lifeBoard)
+                {
+                    return lifeBoard.tick();
+                });
+                lock.lock();
+            }
 
-            if (step > 0)
-                step--;
+            while (!taskQueue.empty())
+            {
+                auto task = taskQueue.front();
+                taskQueue.pop();
+
+                lock.unlock();
+                lifeBoard.modify(task);
+                lock.lock();
+            }
 
             condition.wait(lock, [&]
             {
-                return !running || !paused || step > 0;
+                return !running || !paused || !taskQueue.empty();
             });
         }
     }
@@ -116,6 +126,13 @@ void LifeWindow::tickingThread()
     {
         logger.error(e.what());
     }
+}
+
+void LifeWindow::pushTask(std::function<LifeBoard(const LifeBoard &)> task)
+{
+    std::lock_guard lock(mutex);
+    taskQueue.emplace(task);
+    condition.notify_all();
 }
 
 void LifeWindow::initialize()
@@ -149,34 +166,36 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
         }
 
         if (event.scancode == sf::Keyboard::Scan::Right)
-        {
-            std::lock_guard lock(mutex);
-            step++;
-            condition.notify_all();
-        }
+            pushTask([](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard.tick();
+            });
 
         if (event.scancode == sf::Keyboard::Scan::Delete)
-            lifeBoard.reset();
+            pushTask([](const LifeBoard &lifeBoard)
+            {
+                return LifeBoard();
+            });
     });
 
     addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
     {
         if (event.button == sf::Mouse::Button::Left)
         {
-            lifeBoard.modify([&](const LifeBoard &lifeBoard)
+            pushTask([drawBuffer = drawBuffer](const LifeBoard &lifeBoard)
             {
-                return lifeBoard | *drawBuffer.get();
+                return lifeBoard | drawBuffer;
             });
-            drawBuffer.reset();
+            drawBuffer = BitBoard();
         }
 
         if (event.button == sf::Mouse::Button::Right)
         {
-            lifeBoard.modify([&](const LifeBoard &lifeBoard)
+            pushTask([eraseBuffer = eraseBuffer](const LifeBoard &lifeBoard)
             {
-                return lifeBoard - *eraseBuffer.get();
+                return lifeBoard - eraseBuffer;
             });
-            eraseBuffer.reset();
+            eraseBuffer = BitBoard();
         }
     });
 }
@@ -278,32 +297,21 @@ void LifeWindow::update()
     if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
         gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
         {
-            drawBuffer.modify([=](const BitBoard &drawBuffer)
-            {
-                return drawBuffer.set(pos, true);
-            });
+            drawBuffer.set(pos, true);
         });
 
     if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
         gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
         {
-            eraseBuffer.modify([=](const BitBoard &eraseBuffer)
-            {
-                return eraseBuffer.set(pos, true);
-            });
+            eraseBuffer.set(pos, true);
         });
 }
 
 void LifeWindow::draw()
 {
-    std::shared_ptr<const LifeBoard> lifeBoardPtr = lifeBoard.get();
-    window.draw(LifeBoardRenderer(*lifeBoardPtr, CellColor));
-
-    std::shared_ptr<const BitBoard> drawBufferPtr = drawBuffer.get();
-    window.draw(BitBoardRenderer(*drawBufferPtr, CellColor));
-
-    std::shared_ptr<const BitBoard> eraseBufferPtr = eraseBuffer.get();
-    window.draw(BitBoardRenderer(*eraseBufferPtr, background));
+    window.draw(LifeBoardRenderer(*lifeBoard.get(), CellColor));
+    window.draw(BitBoardRenderer(drawBuffer, CellColor));
+    window.draw(BitBoardRenderer(eraseBuffer, background));
 }
 
 int main(int argc, char *argv[])

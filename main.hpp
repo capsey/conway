@@ -4,6 +4,7 @@
 #include "window.hpp"
 
 #include <condition_variable>
+#include <queue>
 #include <thread>
 
 #define CONWAY_VERSION_STRING "1.0.0"
@@ -51,8 +52,8 @@ class LifeWindow : public Window
 {
 protected:
     Container<LifeBoard> lifeBoard;
-    Container<BitBoard> drawBuffer;
-    Container<BitBoard> eraseBuffer;
+    BitBoard drawBuffer;
+    BitBoard eraseBuffer;
 
     std::thread thread;
     std::mutex mutex;
@@ -60,9 +61,10 @@ protected:
 
     bool running = true;
     bool paused = false;
-    int step = 0;
+    std::queue<std::function<LifeBoard(const LifeBoard &)>> taskQueue;
 
     void tickingThread();
+    void pushTask(std::function<LifeBoard(const LifeBoard &)> task);
 
     void initialize() override;
     void deinitialize() override;
