@@ -255,9 +255,9 @@ LifeBoard LifeBoard::tick() const
 }
 
 static sf::Texture _texture;
-const sf::Texture &ChunkRenderer::texture(_texture);
+const sf::Texture &ChunkRenderer::m_texture(_texture);
 
-void ChunkRenderer::initializeSprites()
+void ChunkRenderer::initializeSprites(Logger &logger)
 {
     assert(_texture.resize(sf::Vector2u(8, 256)));
 
@@ -291,8 +291,8 @@ void ChunkRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) cons
 
     for (int i = 0; i < 8; i++)
     {
-        sf::Sprite sprite(_texture, sf::IntRect({0, int((data >> (8 * i)) % 256)}, {8, 1}));
-        sprite.setColor(color);
+        sf::Sprite sprite(_texture, sf::IntRect({0, int((m_data >> (8 * i)) % 256)}, {8, 1}));
+        sprite.setColor(m_color);
         target.draw(sprite, states);
 
         states.transform = states.transform.translate({0, 1});
@@ -303,9 +303,9 @@ void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) c
 {
     states.transform *= getTransform();
 
-    for (auto it = data.chunks.begin(); it != data.chunks.end(); it++)
+    for (auto it = m_data.chunks.begin(); it != m_data.chunks.end(); it++)
     {
-        ChunkRenderer chunk(it->second, color);
+        ChunkRenderer chunk(it->second, m_color);
         chunk.setPosition(static_cast<sf::Vector2f>(it->first * 8));
         target.draw(chunk, states);
     }
@@ -313,6 +313,6 @@ void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) c
 
 void LifeBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
 {
-    BitBoardRenderer renderer(data.board, color);
+    BitBoardRenderer renderer(m_data.board, m_color);
     target.draw(renderer, states);
 }

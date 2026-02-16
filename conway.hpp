@@ -1,5 +1,7 @@
 #pragma once
 
+#include "logger.hpp"
+
 #include <SFML/Graphics.hpp>
 #include <atomic>
 #include <functional>
@@ -25,32 +27,32 @@ template <typename T>
 class Container
 {
 private:
-    std::atomic<std::shared_ptr<const T>> data;
+    std::atomic<std::shared_ptr<const T>> m_data;
 
 public:
-    Container() : data(std::make_shared<const T>()) {}
-    Container(T value) : data(std::make_shared<const T>(std::move(value))) {}
+    Container() : m_data(std::make_shared<const T>()) {}
+    Container(T data) : m_data(std::make_shared<const T>(std::move(data))) {}
 
-    std::shared_ptr<const T> getData()
+    std::shared_ptr<const T> get()
     {
-        return data.load();
+        return m_data.load();
     }
 
     void modify(std::function<T(const T &)> func)
     {
         while (true)
         {
-            auto expected = data.load();
+            auto expected = m_data.load();
             auto modified = std::make_shared<const T>(func(*expected));
 
-            if (data.compare_exchange_strong(expected, modified))
+            if (m_data.compare_exchange_strong(expected, modified))
                 break;
         }
     }
 
     void reset()
     {
-        data.store(std::make_shared<const T>());
+        m_data.store(std::make_shared<const T>());
     }
 };
 
@@ -114,15 +116,15 @@ public:
 class ChunkRenderer : public sf::Transformable, public sf::Drawable
 {
 private:
-    static const sf::Texture &texture;
+    static const sf::Texture &m_texture;
 
-    uint64_t data;
-    sf::Color color;
+    uint64_t m_data;
+    sf::Color m_color;
 
 public:
-    static void initializeSprites();
+    static void initializeSprites(Logger &logger);
 
-    ChunkRenderer(uint64_t data, sf::Color color) : data(data), color(color) {}
+    ChunkRenderer(uint64_t data, sf::Color color) : m_data(data), m_color(color) {}
 
     void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };
@@ -130,11 +132,11 @@ public:
 class BitBoardRenderer : public sf::Transformable, public sf::Drawable
 {
 private:
-    const BitBoard &data;
-    sf::Color color;
+    const BitBoard &m_data;
+    sf::Color m_color;
 
 public:
-    BitBoardRenderer(const BitBoard &data, sf::Color color) : data(data), color(color) {}
+    BitBoardRenderer(const BitBoard &data, sf::Color color) : m_data(data), m_color(color) {}
 
     void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };
@@ -142,11 +144,11 @@ public:
 class LifeBoardRenderer : public sf::Transformable, public sf::Drawable
 {
 private:
-    const LifeBoard &data;
-    sf::Color color;
+    const LifeBoard &m_data;
+    sf::Color m_color;
 
 public:
-    LifeBoardRenderer(const LifeBoard &data, sf::Color color) : data(data), color(color) {}
+    LifeBoardRenderer(const LifeBoard &data, sf::Color color) : m_data(data), m_color(color) {}
 
     void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };

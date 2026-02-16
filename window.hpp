@@ -1,5 +1,7 @@
 #pragma once
 
+#include "logger.hpp"
+
 #include <SFML/Graphics.hpp>
 #include <functional>
 
@@ -12,6 +14,8 @@ private:
     float m_zoom = 1.0F / 4.0F;
 
 protected:
+    Logger &logger;
+
     sf::RenderWindow window;
     sf::View view;
     sf::Color background = sf::Color::Black;
@@ -31,11 +35,14 @@ protected:
         });
     }
 
+    virtual void initialize() = 0;
+    virtual void deinitialize() = 0;
+
     virtual void update() = 0;
     virtual void draw() = 0;
 
 public:
-    Window(unsigned int width, unsigned int height, std::string title, sf::Color background);
+    Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background);
     ~Window() {}
 
     void run();

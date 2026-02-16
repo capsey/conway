@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-Window::Window(unsigned int width, unsigned int height, std::string title, sf::Color background) : window(sf::VideoMode({width, height}), title), view({0.0F, 0.0F}, {(float)width, (float)height}), background(background)
+Window::Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), view({0.0F, 0.0F}, {(float)width, (float)height}), background(background)
 {
     window.setVerticalSyncEnabled(true);
 
@@ -31,31 +31,46 @@ Window::Window(unsigned int width, unsigned int height, std::string title, sf::C
 
 void Window::run()
 {
-    while (window.isOpen())
+    try
     {
-        while (const std::optional event = window.pollEvent())
-            for (auto &handler : m_handlers)
-                handler(*event);
+        logger.info("Initializing the window...");
+        initialize();
 
-        view = m_view;
-        view.zoom(m_zoom);
+        logger.info("The window event loop started.");
 
-        mousePos = sf::Mouse::getPosition(window);
-        worldPos = window.mapPixelToCoords(mousePos);
+        while (window.isOpen())
+        {
+            while (const std::optional event = window.pollEvent())
+                for (auto &handler : m_handlers)
+                    handler(*event);
 
-        if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Middle))
-            m_view.move(window.mapPixelToCoords(prevMousePos) - worldPos);
+            view = m_view;
+            view.zoom(m_zoom);
 
-        update();
+            mousePos = sf::Mouse::getPosition(window);
+            worldPos = window.mapPixelToCoords(mousePos);
 
-        prevMousePos = mousePos;
-        prevWorldPos = worldPos;
+            if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Middle))
+                m_view.move(window.mapPixelToCoords(prevMousePos) - worldPos);
 
-        window.clear(background);
-        window.setView(view);
+            update();
 
-        draw();
+            prevMousePos = mousePos;
+            prevWorldPos = worldPos;
 
-        window.display();
+            window.clear(background);
+            window.setView(view);
+
+            draw();
+
+            window.display();
+        }
+
+        logger.info("Deinitializing the window...");
+        deinitialize();
+    }
+    catch (const std::exception &e)
+    {
+        logger.error(e.what());
     }
 }
