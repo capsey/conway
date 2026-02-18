@@ -10,13 +10,11 @@ class Window
 private:
     std::vector<std::function<void(const sf::Event &)>> m_handlers;
 
-    sf::View m_view;
-    float m_zoom = 1.0F / 4.0F;
-
 protected:
     Logger &logger;
 
     sf::RenderWindow window;
+    sf::Vector2u size;
     sf::View view;
     sf::Color background = sf::Color::Black;
 
@@ -28,7 +26,7 @@ protected:
     template <typename T>
     void addEventHandler(std::function<void(const T &)> handler)
     {
-        m_handlers.push_back([=](const sf::Event &event)
+        m_handlers.emplace_back([handler = std::move(handler)](const sf::Event &event)
         {
             if (const auto *t = event.getIf<T>())
                 handler(*t);
@@ -43,7 +41,9 @@ protected:
 
 public:
     Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background);
-    ~Window() {}
+    Window(const Window &) = delete;
+    Window &operator=(const Window &) = delete;
+    virtual ~Window() = default;
 
     void run();
 };

@@ -153,51 +153,15 @@ void LifeWindow::deinitialize()
     thread.join();
 }
 
-LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor)
+void LifeWindow::update()
 {
-    addEventHandler<sf::Event::KeyPressed>([&](const sf::Event::KeyPressed &event)
-    {
-        if (event.scancode == sf::Keyboard::Scan::Space)
-        {
-            std::lock_guard lock(mutex);
-            paused = !paused;
-            background = paused ? PausedColor : BackgroundColor;
-            condition.notify_all();
-        }
+}
 
-        if (event.scancode == sf::Keyboard::Scan::Right)
-            pushTask([](const LifeBoard &lifeBoard)
-            {
-                return lifeBoard.tick();
-            });
-
-        if (event.scancode == sf::Keyboard::Scan::Delete)
-            pushTask([](const LifeBoard &lifeBoard)
-            {
-                return LifeBoard();
-            });
-    });
-
-    addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
-    {
-        if (event.button == sf::Mouse::Button::Left)
-        {
-            pushTask([drawBuffer = drawBuffer](const LifeBoard &lifeBoard)
-            {
-                return lifeBoard | drawBuffer;
-            });
-            drawBuffer = BitBoard();
-        }
-
-        if (event.button == sf::Mouse::Button::Right)
-        {
-            pushTask([eraseBuffer = eraseBuffer](const LifeBoard &lifeBoard)
-            {
-                return lifeBoard - eraseBuffer;
-            });
-            eraseBuffer = BitBoard();
-        }
-    });
+void LifeWindow::draw()
+{
+    window.draw(LifeBoardRenderer(*lifeBoard.get(), CellColor));
+    window.draw(BitBoardRenderer(drawBuffer, CellColor));
+    window.draw(BitBoardRenderer(eraseBuffer, background));
 }
 
 inline static sf::Vector2i floor(sf::Vector2f p)
@@ -292,7 +256,32 @@ inline static void gridTraversal(sf::Vector2f p1, sf::Vector2f p2, std::function
     }
 }
 
-void LifeWindow::update()
+LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor)
+{
+    addEventHandler<sf::Event::KeyPressed>([&](const sf::Event::KeyPressed &event)
+    {
+        if (event.scancode == sf::Keyboard::Scan::Space)
+        {
+            std::lock_guard lock(mutex);
+            paused = !paused;
+            background = paused ? PausedColor : BackgroundColor;
+            condition.notify_all();
+        }
+
+        if (event.scancode == sf::Keyboard::Scan::Right)
+            pushTask([](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard.tick();
+            });
+
+        if (event.scancode == sf::Keyboard::Scan::Delete)
+            pushTask([](const LifeBoard &lifeBoard)
+            {
+                return LifeBoard();
+            });
+    });
+
+    addEventHandler<sf::Event::MouseMoved>([&](const sf::Event::MouseMoved &event)
 {
     if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
         gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
@@ -305,13 +294,28 @@ void LifeWindow::update()
         {
             eraseBuffer.set(pos, true);
         });
-}
+    });
 
-void LifeWindow::draw()
+    addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
 {
-    window.draw(LifeBoardRenderer(*lifeBoard.get(), CellColor));
-    window.draw(BitBoardRenderer(drawBuffer, CellColor));
-    window.draw(BitBoardRenderer(eraseBuffer, background));
+        if (event.button == sf::Mouse::Button::Left)
+        {
+            pushTask([drawBuffer = std::move(drawBuffer)](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard | drawBuffer;
+            });
+            drawBuffer = BitBoard();
+        }
+
+        if (event.button == sf::Mouse::Button::Right)
+        {
+            pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard - eraseBuffer;
+            });
+            eraseBuffer = BitBoard();
+        }
+    });
 }
 
 int main(int argc, char *argv[])
