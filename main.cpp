@@ -1,6 +1,7 @@
 #include "main.hpp"
 #include "logger.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <syncstream>
@@ -47,6 +48,12 @@ Options::Options(int argc, char *argv[]) : m_executable(argv[0])
                 continue;
             }
 
+            if (arg == "--benchmark")
+            {
+                benchmark = true;
+                continue;
+            }
+
             throw Error("Unknown option '" + arg + "'.", m_executable);
         }
     }
@@ -76,13 +83,13 @@ void Options::printVersion()
 
 LogLevel Options::getLogLevel()
 {
-    LogLevel level = LogLevel::ERROR;
+    LogLevel level = LogLevel::Error;
 
     if (info)
-        level = LogLevel::INFO;
+        level = LogLevel::Info;
 
     if (debug)
-        level = LogLevel::DEBUG;
+        level = LogLevel::Debug;
 
     return level;
 }
@@ -101,7 +108,7 @@ void LifeWindow::tickingThread()
                 lock.unlock();
                 lifeBoard.modify([](const LifeBoard &lifeBoard)
                 {
-                    return lifeBoard.tick();
+                    return lifeBoard.next();
                 });
                 lock.lock();
             }
@@ -271,33 +278,33 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
         if (event.scancode == sf::Keyboard::Scan::Right)
             pushTask([](const LifeBoard &lifeBoard)
             {
-                return lifeBoard.tick();
+                return lifeBoard.next();
             });
 
         if (event.scancode == sf::Keyboard::Scan::Delete)
-            pushTask([](const LifeBoard &lifeBoard)
+            pushTask([](const LifeBoard &)
             {
                 return LifeBoard();
             });
     });
 
-    addEventHandler<sf::Event::MouseMoved>([&](const sf::Event::MouseMoved &event)
-{
-    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
-        gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
-        {
-            drawBuffer.set(pos, true);
-        });
+    addEventHandler<sf::Event::MouseMoved>([&](const sf::Event::MouseMoved &)
+    {
+        if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
+            gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
+            {
+                drawBuffer.set(pos, true);
+            });
 
-    if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
-        gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
-        {
-            eraseBuffer.set(pos, true);
-        });
+        if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
+            gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
+            {
+                eraseBuffer.set(pos, true);
+            });
     });
 
     addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
-{
+    {
         if (event.button == sf::Mouse::Button::Left)
         {
             pushTask([drawBuffer = std::move(drawBuffer)](const LifeBoard &lifeBoard)
@@ -316,6 +323,45 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             eraseBuffer = BitBoard();
         }
     });
+}
+
+static void runBenchmark(const Options &, Logger &logger)
+{
+    constexpr int Iterations = 1'000;
+    constexpr int StripeLength = 4096;
+
+    LifeBoard lifeBoard;
+
+    logger.info("Starting benchmark with {} iterations", Iterations);
+
+    for (int i = 0; i < StripeLength; i++)
+    {
+        lifeBoard.set({i, 0}, true);
+    }
+
+    logger.debug("Initial board seeded with {} live cells", StripeLength);
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < Iterations; i++)
+    {
+        lifeBoard = std::move(lifeBoard.next());
+    }
+    auto t2 = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double, std::milli> duration = t2 - t1;
+    double throughput = 1000.0 * (double)Iterations / duration.count();
+
+    std::osyncstream stream(std::cout);
+    stream << "Processed " << Iterations << " iterations in " << duration.count() << " ms\n";
+    stream << "Throughput is " << throughput << " iterations per second\n";
+}
+
+static void runWindow(const Options &, Logger &logger)
+{
+    ChunkRenderer::initializeSprites(logger);
+
+    LifeWindow game(logger, 600, 400);
+    game.run();
 }
 
 int main(int argc, char *argv[])
@@ -338,15 +384,21 @@ int main(int argc, char *argv[])
 
         Logger logger(options.getLogLevel(), std::cerr);
 
-        ChunkRenderer::initializeSprites(logger);
-
-        LifeWindow game(logger, 600, 400);
-        game.run();
+        if (options.benchmark)
+        {
+            runBenchmark(options, logger);
+            return 0;
+        }
+        else
+        {
+            runWindow(options, logger);
+            return 0;
+        }
     }
     catch (const Options::Error &error)
     {
         std::osyncstream stream(std::cerr);
-        stream << "Error: " << error.what() << "\n";
+        stream << "Error: " << error.what() << '\n';
         stream << "Use '" << error.executable() << " --help' for usage information.\n";
         return 1;
     }

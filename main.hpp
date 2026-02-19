@@ -19,6 +19,7 @@ public:
     bool version = false;
     bool info = false;
     bool debug = false;
+    bool benchmark = false;
 
     Options(int argc, char *argv[]);
 

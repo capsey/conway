@@ -1,3 +1,5 @@
+BUILD ?= debug
+
 BINARY := conway
 
 SRCS := $(wildcard *.cpp)
@@ -5,8 +7,12 @@ OBJS := $(SRCS:.cpp=.o)
 DEPS := $(SRCS:.cpp=.d)
 
 CXX := g++
-CXXFLAGS := -std=c++20 -g -Wall -Werror -pedantic -MMD -MP
-LDFLAGS :=
+CXXFLAGS.debug = -g3 -O0 -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
+CXXFLAGS.release = -O3 -march=native -DNDEBUG
+CXXFLAGS := -std=c++20 $(CXXFLAGS.$(BUILD)) -Wall -Wextra -Werror -pedantic -MMD -MP
+LDFLAGS.debug = -fsanitize=address,undefined
+LDFLAGS.release =
+LDFLAGS := $(LDFLAGS.$(BUILD))
 LDLIBS := -lsfml-graphics -lsfml-window -lsfml-system
 
 .PHONY: clean

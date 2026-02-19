@@ -7,7 +7,7 @@ Window::Window(Logger &logger, unsigned int width, unsigned int height, std::str
 {
     window.setVerticalSyncEnabled(true);
 
-    addEventHandler<sf::Event::Closed>([&](const sf::Event::Closed &event)
+    addEventHandler<sf::Event::Closed>([&](const sf::Event::Closed &)
     {
         window.close();
     });

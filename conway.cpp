@@ -3,26 +3,37 @@
 #include <cmath>
 #include <iostream>
 
+Chunk &Chunk::set(sf::Vector2i pos, bool state)
+{
+    int i = (pos.y * 8) + pos.x;
+    assert(i >= 0 && i < 64);
+    uint64_t mask = 1ULL << i;
+    m_data = state ? m_data | mask : m_data & ~mask;
+    return *this;
+}
+
+bool Chunk::get(sf::Vector2i pos) const
+{
+    int i = (pos.y * 8) + pos.x;
+    assert(i >= 0 && i < 64);
+    return (m_data >> i) & 1;
+}
+
 void BitBoard::set(sf::Vector2i pos, bool state)
 {
     sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
-    int i = (localPos.y * 8) + localPos.x;
-    uint64_t mask = 1ULL << i;
+    auto entry = m_chunks.find(chunkPos);
 
-    auto entry = chunks.find(chunkPos);
-
-    if (entry != chunks.end())
+    if (entry != m_chunks.end())
     {
-        if (uint64_t x = state ? entry->second | mask : entry->second & ~mask)
-            entry->second = x;
-        else
-            chunks.erase(entry);
+        if (!entry->second.set(localPos, state))
+            m_chunks.erase(entry);
     }
     else if (state)
     {
-        chunks[chunkPos] = mask;
+        m_chunks[chunkPos].set(localPos, state);
     }
 }
 
@@ -31,26 +42,24 @@ bool BitBoard::get(sf::Vector2i pos) const
     sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
-    int i = (localPos.y * 8) + localPos.x;
+    auto entry = m_chunks.find(chunkPos);
 
-    auto entry = chunks.find(chunkPos);
-
-    if (entry != chunks.end())
-        return entry->second >> i;
+    if (entry != m_chunks.end())
+        return entry->second.get(localPos);
 
     return false;
 }
 
 BitBoard &BitBoard::operator|=(const BitBoard &other)
 {
-    for (auto it = other.chunks.begin(); it != other.chunks.end(); it++)
+    for (auto it = other.m_chunks.begin(); it != other.m_chunks.end(); it++)
     {
-        auto entry = chunks.find(it->first);
+        auto entry = m_chunks.find(it->first);
 
-        if (entry != chunks.end())
+        if (entry != m_chunks.end())
             entry->second |= it->second;
         else
-            chunks[it->first] = it->second;
+            m_chunks[it->first] = it->second;
     }
 
     return *this;
@@ -58,37 +67,37 @@ BitBoard &BitBoard::operator|=(const BitBoard &other)
 
 BitBoard &BitBoard::operator-=(const BitBoard &other)
 {
-    for (auto it = other.chunks.begin(); it != other.chunks.end(); it++)
+    for (auto it = other.m_chunks.begin(); it != other.m_chunks.end(); it++)
     {
-        auto entry = chunks.find(it->first);
+        auto entry = m_chunks.find(it->first);
 
-        if (entry != chunks.end())
+        if (entry != m_chunks.end())
             if (!(entry->second &= ~it->second))
-                chunks.erase(entry);
+                m_chunks.erase(entry);
     }
 
     return *this;
 }
 
-inline static std::pair<uint64_t, uint64_t> halfAdder(uint64_t a, uint64_t b)
+inline static std::pair<Chunk, Chunk> halfAdder(Chunk a, Chunk b)
 {
     return {a ^ b, a & b};
 }
 
-inline static std::pair<uint64_t, uint64_t> fullAdder(uint64_t a, uint64_t b, uint64_t c)
+inline static std::pair<Chunk, Chunk> fullAdder(Chunk a, Chunk b, Chunk c)
 {
-    uint64_t s = a ^ b;
+    Chunk s = a ^ b;
     return {s ^ c, (a & b) | (s & c)};
 }
 
-inline static std::tuple<uint64_t, uint64_t, uint64_t> adder2(uint64_t a0, uint64_t a1, uint64_t b0, uint64_t b1)
+inline static std::tuple<Chunk, Chunk, Chunk> adder2(Chunk a0, Chunk a1, Chunk b0, Chunk b1)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
     return {s0, s1, c1};
 }
 
-inline static std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> adder3(uint64_t a0, uint64_t a1, uint64_t a2, uint64_t b0, uint64_t b1, uint64_t b2)
+inline static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, Chunk a2, Chunk b0, Chunk b1, Chunk b2)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
@@ -96,119 +105,119 @@ inline static std::tuple<uint64_t, uint64_t, uint64_t, uint64_t> adder3(uint64_t
     return {s0, s1, s2, c2};
 }
 
-inline static uint64_t process(const BitBoard &board, sf::Vector2i pos, uint64_t x, std::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
+inline static Chunk process(const BitBoard &board, sf::Vector2i pos, Chunk x, std::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
 {
-    uint64_t x0 = (x << 1) & 0xFEFEFEFEFEFEFEFEULL; // left neighbor
-    uint64_t x1 = (x >> 1) & 0x7F7F7F7F7F7F7F7FULL; // right neighbor
-    uint64_t x2 = x << 8;                           // upper neighbor
-    uint64_t x3 = x >> 8;                           // lower neighbor
-    uint64_t x4 = (x << 9) & 0xFEFEFEFEFEFEFEFEULL; // upper left neighbor
-    uint64_t x5 = (x >> 7) & 0xFEFEFEFEFEFEFEFEULL; // lower left neighbor
-    uint64_t x6 = (x << 7) & 0x7F7F7F7F7F7F7F7FULL; // upper right neighbor
-    uint64_t x7 = (x >> 9) & 0x7F7F7F7F7F7F7F7FULL; // lower right neighbor
+    Chunk x0 = x.shiftRight(); // left neighbor
+    Chunk x1 = x.shiftLeft();  // right neighbor
+    Chunk x2 = x.shiftDown();  // upper neighbor
+    Chunk x3 = x.shiftUp();    // lower neighbor
+    Chunk x4 = x0.shiftDown(); // upper left neighbor
+    Chunk x5 = x0.shiftUp();   // lower left neighbor
+    Chunk x6 = x1.shiftDown(); // upper right neighbor
+    Chunk x7 = x1.shiftUp();   // lower right neighbor
 
     // left border
     sf::Vector2i borderPos = pos + sf::Vector2i(-1, 0);
-    auto entry = board.chunks.find(borderPos);
+    auto entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x0 |= (y >> 7) & 0x0101010101010101ULL;
-        x4 |= (y << 1) & 0x0101010101010101ULL;
-        x5 |= (y >> 15) & 0x0101010101010101ULL;
+        Chunk y = entry->second.shiftLeft(7);
+        x0 |= y;
+        x4 |= y.shiftDown();
+        x5 |= y.shiftUp();
     }
-    else if (potentialChunks && x & 0x0101010101010101ULL)
+    else if (potentialChunks && x.shiftRight(7))
     {
         potentialChunks->insert(borderPos);
     }
 
     // right border
     borderPos = pos + sf::Vector2i(1, 0);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x1 |= (y << 7) & 0x8080808080808080ULL;
-        x6 |= (y << 15) & 0x8080808080808080ULL;
-        x7 |= (y >> 1) & 0x8080808080808080ULL;
+        Chunk y = entry->second.shiftRight(7);
+        x1 |= y;
+        x6 |= y.shiftDown();
+        x7 |= y.shiftUp();
     }
-    else if (potentialChunks && x & 0x8080808080808080ULL)
+    else if (potentialChunks && x.shiftLeft(7))
     {
         potentialChunks->insert(borderPos);
     }
 
     // upper border
     borderPos = pos + sf::Vector2i(0, -1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x2 |= y >> 56;
-        x6 |= y >> 57;
-        x4 |= (y >> 55) & 0x00000000000000FEULL;
+        Chunk y = entry->second.shiftUp(7);
+        x2 |= y;
+        x6 |= y.shiftLeft();
+        x4 |= y.shiftRight();
     }
-    else if (potentialChunks && x & 0x00000000000000FFULL)
+    else if (potentialChunks && x.shiftDown(7))
     {
         potentialChunks->insert(borderPos);
     }
 
     // lower border
     borderPos = pos + sf::Vector2i(0, 1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x3 |= y << 56;
-        x7 |= (y << 55) & 0x7F00000000000000ULL;
-        x5 |= y << 57;
+        Chunk y = entry->second.shiftDown(7);
+        x3 |= y;
+        x7 |= y.shiftLeft();
+        x5 |= y.shiftRight();
     }
-    else if (potentialChunks && x & 0xFF00000000000000ULL)
+    else if (potentialChunks && x.shiftUp(7))
     {
         potentialChunks->insert(borderPos);
     }
 
     // upper left corner
     borderPos = pos + sf::Vector2i(-1, -1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x4 |= y >> 63;
+        Chunk y = entry->second.shiftLeft(7).shiftUp(7);
+        x4 |= y;
     }
 
     // upper right corner
     borderPos = pos + sf::Vector2i(1, -1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x6 |= (y >> 49) & 0x0000000000000080ULL;
+        Chunk y = entry->second.shiftRight(7).shiftUp(7);
+        x6 |= y;
     }
 
     // lower left corner
     borderPos = pos + sf::Vector2i(-1, 1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x5 |= (y << 49) & 0x0100000000000000ULL;
+        Chunk y = entry->second.shiftLeft(7).shiftDown(7);
+        x5 |= y;
     }
 
     // lower right corner
     borderPos = pos + sf::Vector2i(1, 1);
-    entry = board.chunks.find(borderPos);
+    entry = board.find(borderPos);
 
-    if (entry != board.chunks.end())
+    if (entry != board.end())
     {
-        uint64_t y = entry->second;
-        x7 |= y << 63;
+        Chunk y = entry->second.shiftRight(7).shiftDown(7);
+        x7 |= y;
     }
 
     // 1-bit layer
@@ -227,25 +236,25 @@ inline static uint64_t process(const BitBoard &board, sf::Vector2i pos, uint64_t
     return r1 & ~r2 & (r0 | x);
 }
 
-LifeBoard LifeBoard::tick() const
+LifeBoard LifeBoard::next() const
 {
     LifeBoard result = *this;
-    result.ticks++;
+    result.m_ticks++;
 
     std::unordered_set<sf::Vector2i> potentialChunks;
 
-    for (auto it = board.chunks.begin(); it != board.chunks.end(); it++)
-        if (uint64_t y = process(board, it->first, it->second, &potentialChunks))
+    for (auto it = m_board.begin(); it != m_board.end(); it++)
+        if (Chunk y = process(m_board, it->first, it->second, &potentialChunks))
         {
             if (y != it->second)
-                result.board.chunks[it->first] = y;
+                result.m_board[it->first] = std::move(y);
         }
         else
-            result.board.chunks.erase(it->first);
+            result.m_board.erase(it->first);
 
     for (auto &pos : potentialChunks)
-        if (uint64_t y = process(board, pos, 0))
-            result.board.chunks[pos] = y;
+        if (Chunk y = process(m_board, pos, Chunk()))
+            result.m_board[pos] = std::move(y);
 
     return result;
 }
@@ -255,10 +264,14 @@ const sf::Texture &ChunkRenderer::m_texture(_texture);
 
 void ChunkRenderer::initializeSprites(Logger &logger)
 {
-    assert(_texture.resize(sf::Vector2u(8, 256)));
+    if (!_texture.resize(sf::Vector2u(8, 256)))
+        throw std::runtime_error("Failed to resize the texture.");
 
     auto [width, height] = _texture.getSize();
+    logger.debug("Texture resized successfully to {}x{}", width, height);
+
     std::vector<std::uint8_t> pixels(width * height * 4);
+    logger.debug("Allocated pixel buffer ({} bytes)", pixels.size());
 
     for (unsigned int i = 0; i < height; i++)
     {
@@ -279,6 +292,7 @@ void ChunkRenderer::initializeSprites(Logger &logger)
     }
 
     _texture.update(pixels.data());
+    logger.info("Sprite texture initialization completed successfully.");
 }
 
 void ChunkRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
@@ -287,7 +301,7 @@ void ChunkRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) cons
 
     for (int i = 0; i < 8; i++)
     {
-        sf::Sprite sprite(_texture, sf::IntRect({0, int((m_data >> (8 * i)) % 256)}, {8, 1}));
+        sf::Sprite sprite(_texture, sf::IntRect({0, int((m_data.data() >> (8 * i)) % 256)}, {8, 1}));
         sprite.setColor(m_color);
         target.draw(sprite, states);
 
@@ -299,7 +313,7 @@ void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) c
 {
     states.transform *= getTransform();
 
-    for (auto it = m_data.chunks.begin(); it != m_data.chunks.end(); it++)
+    for (auto it = m_data.begin(); it != m_data.end(); it++)
     {
         ChunkRenderer chunk(it->second, m_color);
         chunk.setPosition(static_cast<sf::Vector2f>(it->first * 8));
@@ -309,6 +323,6 @@ void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) c
 
 void LifeBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
 {
-    BitBoardRenderer renderer(m_data.board, m_color);
+    BitBoardRenderer renderer(m_data.board(), m_color);
     target.draw(renderer, states);
 }

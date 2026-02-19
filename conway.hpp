@@ -56,13 +56,188 @@ public:
     }
 };
 
+class Chunk
+{
+private:
+    uint64_t m_data;
+
+public:
+    Chunk() : m_data(0) {}
+    explicit Chunk(uint64_t data) : m_data(data) {}
+
+    inline uint64_t data() const
+    {
+        return m_data;
+    }
+
+    inline Chunk &set(sf::Vector2i pos, bool state);
+    inline bool get(sf::Vector2i pos) const;
+
+    inline Chunk shiftLeft() const
+    {
+        return Chunk((m_data >> 1) & 0x7F7F7F7F7F7F7F7FULL);
+    }
+
+    inline Chunk shiftLeft(unsigned int n) const
+    {
+        Chunk result = *this;
+
+        while (n--)
+            result = std::move(result.shiftLeft());
+
+        return result;
+    }
+
+    inline Chunk shiftRight() const
+    {
+        return Chunk((m_data << 1) & 0xFEFEFEFEFEFEFEFEULL);
+    }
+
+    inline Chunk shiftRight(unsigned int n) const
+    {
+        Chunk result = *this;
+
+        while (n--)
+            result = std::move(result.shiftRight());
+
+        return result;
+    }
+
+    inline Chunk shiftUp() const
+    {
+        return Chunk(m_data >> 8);
+    }
+
+    inline Chunk shiftUp(unsigned int n) const
+    {
+        Chunk result = *this;
+
+        while (n--)
+            result = std::move(result.shiftUp());
+
+        return result;
+    }
+
+    inline Chunk shiftDown() const
+    {
+        return Chunk(m_data << 8);
+    }
+
+    inline Chunk shiftDown(unsigned int n) const
+    {
+        Chunk result = *this;
+
+        while (n--)
+            result = std::move(result.shiftDown());
+
+        return result;
+    }
+
+    inline explicit operator bool() const
+    {
+        return m_data;
+    }
+
+    inline bool operator==(const Chunk &rhs) const
+    {
+        return m_data == rhs.m_data;
+    }
+
+    inline Chunk &operator|=(const Chunk &other)
+    {
+        m_data |= other.m_data;
+        return *this;
+    }
+
+    inline Chunk &operator&=(const Chunk &other)
+    {
+        m_data &= other.m_data;
+        return *this;
+    }
+
+    inline Chunk &operator^=(const Chunk &other)
+    {
+        m_data ^= other.m_data;
+        return *this;
+    }
+
+    inline Chunk operator~() const
+    {
+        return Chunk(~m_data);
+    }
+
+    inline friend Chunk operator|(Chunk lhs, const Chunk &rhs)
+    {
+        lhs |= rhs;
+        return lhs;
+    }
+
+    inline friend Chunk operator&(Chunk lhs, const Chunk &rhs)
+    {
+        lhs &= rhs;
+        return lhs;
+    }
+
+    inline friend Chunk operator^(Chunk lhs, const Chunk &rhs)
+    {
+        lhs ^= rhs;
+        return lhs;
+    }
+};
+
 class BitBoard
 {
-public:
-    std::unordered_map<sf::Vector2i, uint64_t> chunks;
+private:
+    std::unordered_map<sf::Vector2i, Chunk> m_chunks;
 
+public:
     void set(sf::Vector2i pos, bool state);
     bool get(sf::Vector2i pos) const;
+
+    std::unordered_map<sf::Vector2i, Chunk>::iterator find(const sf::Vector2i &pos)
+    {
+        return m_chunks.find(pos);
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::const_iterator find(const sf::Vector2i &pos) const
+    {
+        return m_chunks.find(pos);
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::iterator erase(std::unordered_map<sf::Vector2i, Chunk>::iterator it)
+    {
+        return m_chunks.erase(it);
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::size_type erase(const sf::Vector2i &pos)
+    {
+        return m_chunks.erase(pos);
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::iterator begin() noexcept
+    {
+        return m_chunks.begin();
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::const_iterator begin() const noexcept
+    {
+        return m_chunks.begin();
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::iterator end() noexcept
+    {
+        return m_chunks.end();
+    }
+
+    std::unordered_map<sf::Vector2i, Chunk>::const_iterator end() const noexcept
+    {
+        return m_chunks.end();
+    }
+
+    Chunk &operator[](const sf::Vector2i &pos)
+    {
+        return m_chunks[pos];
+    }
 
     BitBoard &operator|=(const BitBoard &other);
     BitBoard &operator-=(const BitBoard &other);
@@ -82,21 +257,37 @@ public:
 
 class LifeBoard
 {
-public:
-    BitBoard board;
-    unsigned int ticks = 0;
+private:
+    BitBoard m_board;
+    unsigned int m_ticks = 0;
 
-    LifeBoard tick() const;
+public:
+    const BitBoard &board() const
+    {
+        return m_board;
+    }
+
+    LifeBoard next() const;
+
+    void set(sf::Vector2i pos, bool state)
+    {
+        m_board.set(pos, state);
+    }
+
+    bool get(sf::Vector2i pos) const
+    {
+        return m_board.get(pos);
+    }
 
     LifeBoard &operator|=(const BitBoard &other)
     {
-        board |= other;
+        m_board |= other;
         return *this;
     }
 
     LifeBoard &operator-=(const BitBoard &other)
     {
-        board -= other;
+        m_board -= other;
         return *this;
     }
 
@@ -118,13 +309,13 @@ class ChunkRenderer : public sf::Transformable, public sf::Drawable
 private:
     static const sf::Texture &m_texture;
 
-    uint64_t m_data;
+    Chunk m_data;
     sf::Color m_color;
 
 public:
     static void initializeSprites(Logger &logger);
 
-    ChunkRenderer(uint64_t data, sf::Color color) : m_data(data), m_color(color) {}
+    ChunkRenderer(Chunk data, sf::Color color) : m_data(data), m_color(color) {}
 
     void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };
