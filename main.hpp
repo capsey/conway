@@ -49,22 +49,49 @@ public:
     };
 };
 
+class Simulation
+{
+private:
+    std::atomic<std::shared_ptr<const LifeBoard>> m_data;
+
+    bool m_running = true;
+    bool m_paused = false;
+    std::queue<std::function<LifeBoard(const LifeBoard &)>> m_taskQueue;
+
+    std::thread m_thread;
+    std::mutex m_mutex;
+    std::condition_variable m_condition;
+
+    void tickingThread();
+
+protected:
+    Logger &logger;
+
+public:
+    Simulation(Logger &logger) : m_data(std::make_shared<const LifeBoard>()), logger(logger) {}
+    Simulation(Logger &logger, LifeBoard data) : m_data(std::make_shared<const LifeBoard>(std::move(data))), logger(logger) {}
+
+    void start();
+    bool togglePause();
+    void pushTask(std::function<LifeBoard(const LifeBoard &)> task);
+    void stop();
+
+    std::shared_ptr<const LifeBoard> get()
+    {
+        return m_data.load();
+    }
+
+    void reset()
+    {
+        m_data.store(std::make_shared<const LifeBoard>());
+    }
+};
+
 class LifeWindow : public Window
 {
 protected:
-    Container<LifeBoard> lifeBoard;
+    Simulation simulation;
     BitBoard drawBuffer;
-
-    std::thread thread;
-    std::mutex mutex;
-    std::condition_variable condition;
-
-    bool running = true;
-    bool paused = false;
-    std::queue<std::function<LifeBoard(const LifeBoard &)>> taskQueue;
-
-    void tickingThread();
-    void pushTask(std::function<LifeBoard(const LifeBoard &)> task);
 
     void initialize() override;
     void deinitialize() override;

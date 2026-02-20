@@ -15,45 +15,11 @@ namespace boost
     {
         std::size_t operator()(const sf::Vector2i &v) const
         {
-            size_t h1 = std::hash<int>()(v.x);
-            size_t h2 = std::hash<int>()(v.y);
-            return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+            static_assert(sizeof(v.x) == 4 && sizeof(v.y) == 4 && sizeof(size_t) == 8);
+            return ((uint64_t)v.y << 32) | (uint32_t)v.x;
         }
     };
 }
-
-template <typename T>
-class Container
-{
-private:
-    std::atomic<std::shared_ptr<const T>> m_data;
-
-public:
-    Container() : m_data(std::make_shared<const T>()) {}
-    Container(T data) : m_data(std::make_shared<const T>(std::move(data))) {}
-
-    std::shared_ptr<const T> get()
-    {
-        return m_data.load();
-    }
-
-    void modify(std::function<T(const T &)> func)
-    {
-        while (true)
-        {
-            auto expected = m_data.load();
-            auto modified = std::make_shared<const T>(func(*expected));
-
-            if (m_data.compare_exchange_strong(expected, modified))
-                break;
-        }
-    }
-
-    void reset()
-    {
-        m_data.store(std::make_shared<const T>());
-    }
-};
 
 class Chunk
 {
@@ -277,6 +243,11 @@ public:
     bool get(sf::Vector2i pos) const
     {
         return m_board.get(pos);
+    }
+
+    unsigned int ticks()
+    {
+        return m_ticks;
     }
 
     LifeBoard &operator|=(const BitBoard &other)

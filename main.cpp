@@ -94,38 +94,35 @@ LogLevel Options::getLogLevel()
     return level;
 }
 
-void LifeWindow::tickingThread()
+void Simulation::tickingThread()
 {
     try
     {
-        std::unique_lock lock(mutex);
+        std::unique_lock lock(m_mutex);
         logger.info("The ticking thread started.");
 
-        while (running)
+        while (m_running)
         {
-            if (!paused)
+            if (!m_paused)
             {
                 lock.unlock();
-                lifeBoard.modify([](const LifeBoard &lifeBoard)
-                {
-                    return lifeBoard.next();
-                });
+                m_data.store(std::make_shared<const LifeBoard>(m_data.load()->next()));
                 lock.lock();
             }
 
-            while (!taskQueue.empty())
+            while (!m_taskQueue.empty())
             {
-                auto task = taskQueue.front();
-                taskQueue.pop();
+                auto task = m_taskQueue.front();
+                m_taskQueue.pop();
 
                 lock.unlock();
-                lifeBoard.modify(task);
+                m_data.store(std::make_shared<const LifeBoard>(task(*m_data.load())));
                 lock.lock();
             }
 
-            condition.wait(lock, [&]
+            m_condition.wait(lock, [&]
             {
-                return !running || !paused || !taskQueue.empty();
+                return !m_running || !m_paused || !m_taskQueue.empty();
             });
         }
     }
@@ -135,29 +132,49 @@ void LifeWindow::tickingThread()
     }
 }
 
-void LifeWindow::pushTask(std::function<LifeBoard(const LifeBoard &)> task)
+void Simulation::start()
 {
-    std::lock_guard lock(mutex);
-    taskQueue.emplace(task);
-    condition.notify_all();
+    logger.info("Starting the ticking thread...");
+    m_thread = std::thread(&Simulation::tickingThread, this);
+}
+
+bool Simulation::togglePause()
+{
+    logger.debug("Toggling pause state of the simulation.");
+    std::lock_guard lock(m_mutex);
+    m_paused = !m_paused;
+    m_condition.notify_all();
+    return m_paused;
+}
+
+void Simulation::pushTask(std::function<LifeBoard(const LifeBoard &)> task)
+{
+    logger.debug("Task pushed to the queue.");
+    std::lock_guard lock(m_mutex);
+    m_taskQueue.emplace(task);
+    m_condition.notify_all();
+}
+
+void Simulation::stop()
+{
+    {
+        std::lock_guard lock(m_mutex);
+        m_running = false;
+        m_condition.notify_all();
+    }
+
+    logger.info("Joining the ticking thread...");
+    m_thread.join();
 }
 
 void LifeWindow::initialize()
 {
-    logger.info("Starting the ticking thread...");
-    thread = std::thread(&LifeWindow::tickingThread, this);
+    simulation.start();
 }
 
 void LifeWindow::deinitialize()
 {
-    {
-        std::lock_guard lock(mutex);
-        running = false;
-        condition.notify_all();
-    }
-
-    logger.info("Joining the ticking thread...");
-    thread.join();
+    simulation.stop();
 }
 
 void LifeWindow::update()
@@ -166,30 +183,28 @@ void LifeWindow::update()
 
 void LifeWindow::draw()
 {
-    window.draw(LifeBoardRenderer(*lifeBoard.get(), CellColor));
+    window.draw(LifeBoardRenderer(*simulation.get(), CellColor));
     window.draw(BitBoardRenderer(drawBuffer, CellColor));
 }
 
-LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor)
+LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor), simulation(logger)
 {
     addEventHandler<sf::Event::KeyPressed>([&](const sf::Event::KeyPressed &event)
     {
         if (event.scancode == sf::Keyboard::Scan::Space)
         {
-            std::lock_guard lock(mutex);
-            paused = !paused;
+            bool paused = simulation.togglePause();
             background = paused ? PausedColor : BackgroundColor;
-            condition.notify_all();
         }
 
         if (event.scancode == sf::Keyboard::Scan::Right)
-            pushTask([](const LifeBoard &lifeBoard)
+            simulation.pushTask([](const LifeBoard &lifeBoard)
             {
                 return lifeBoard.next();
             });
 
         if (event.scancode == sf::Keyboard::Scan::Delete)
-            pushTask([](const LifeBoard &)
+            simulation.pushTask([](const LifeBoard &)
             {
                 return LifeBoard();
             });
@@ -201,7 +216,7 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             drawBuffer.set(floor(worldPos), true);
 
         if (event.button == sf::Mouse::Button::Right)
-            pushTask([worldPos = worldPos](const LifeBoard &lifeBoard)
+            simulation.pushTask([worldPos = worldPos](const LifeBoard &lifeBoard)
             {
                 LifeBoard result = lifeBoard;
                 return result.set(floor(worldPos), false);
@@ -223,7 +238,8 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             {
                 eraseBuffer.set(pos, true);
             });
-            pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
+
+            simulation.pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
             {
                 return lifeBoard - eraseBuffer;
             });
@@ -234,10 +250,11 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
     {
         if (event.button == sf::Mouse::Button::Left)
         {
-            pushTask([drawBuffer = std::move(drawBuffer)](const LifeBoard &lifeBoard)
+            simulation.pushTask([drawBuffer = std::move(drawBuffer)](const LifeBoard &lifeBoard)
             {
                 return lifeBoard | drawBuffer;
             });
+
             drawBuffer = BitBoard();
         }
     });
@@ -250,14 +267,14 @@ static void runBenchmark(const Options &, Logger &logger)
 
     LifeBoard lifeBoard;
 
-    logger.info("Starting benchmark with {} iterations", Iterations);
+    logger.info("Starting benchmark with {} iterations.", Iterations);
 
     for (int i = 0; i < StripeLength; i++)
     {
         lifeBoard.set({i, 0}, true);
     }
 
-    logger.debug("Initial board seeded with {} live cells", StripeLength);
+    logger.debug("Initial board seeded with {} live cells.", StripeLength);
 
     auto t1 = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < Iterations; i++)
@@ -265,6 +282,8 @@ static void runBenchmark(const Options &, Logger &logger)
         lifeBoard = lifeBoard.next();
     }
     auto t2 = std::chrono::high_resolution_clock::now();
+
+    logger.debug("Last generation tick value is {}.", lifeBoard.ticks());
 
     std::chrono::duration<double, std::milli> duration = t2 - t1;
     double throughput = 1000.0 * (double)Iterations / duration.count();

@@ -271,10 +271,10 @@ void ChunkRenderer::initializeSprites(Logger &logger)
         throw std::runtime_error("Failed to resize the texture.");
 
     auto [width, height] = _texture.getSize();
-    logger.debug("Texture resized successfully to {}x{}", width, height);
+    logger.debug("Texture resized successfully to {}x{}.", width, height);
 
     std::vector<std::uint8_t> pixels(width * height * 4);
-    logger.debug("Allocated pixel buffer ({} bytes)", pixels.size());
+    logger.debug("Allocated pixel buffer with {} bytes.", pixels.size());
 
     for (unsigned int i = 0; i < height; i++)
     {
