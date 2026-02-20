@@ -54,7 +54,6 @@ class LifeWindow : public Window
 protected:
     Container<LifeBoard> lifeBoard;
     BitBoard drawBuffer;
-    BitBoard eraseBuffer;
 
     std::thread thread;
     std::mutex mutex;

@@ -1,8 +1,8 @@
 #include "main.hpp"
 #include "logger.hpp"
+#include "utility.hpp"
 
 #include <chrono>
-#include <cmath>
 #include <iostream>
 #include <syncstream>
 
@@ -168,99 +168,6 @@ void LifeWindow::draw()
 {
     window.draw(LifeBoardRenderer(*lifeBoard.get(), CellColor));
     window.draw(BitBoardRenderer(drawBuffer, CellColor));
-    window.draw(BitBoardRenderer(eraseBuffer, background));
-}
-
-inline static sf::Vector2i floor(sf::Vector2f p)
-{
-    return {(int)std::floor(p.x), (int)std::floor(p.y)};
-}
-
-// https://dedu.fr/projects/bresenham/
-inline static void gridTraversal(sf::Vector2f p1, sf::Vector2f p2, std::function<void(sf::Vector2i)> func)
-{
-    int ystep, xstep;
-    sf::Vector2i d = floor(p2) - floor(p1);
-
-    if (d.y < 0)
-    {
-        ystep = -1;
-        d.y = -d.y;
-    }
-    else
-        ystep = 1;
-    if (d.x < 0)
-    {
-        xstep = -1;
-        d.x = -d.x;
-    }
-    else
-        xstep = 1;
-
-    sf::Vector2i dd = 2 * d;
-    sf::Vector2i p = floor(p1);
-    func(p);
-
-    if (dd.x >= dd.y)
-    {
-        int errorprev = d.x;
-        int error = d.x;
-
-        for (int i = 0; i < d.x; i++)
-        {
-            p.x += xstep;
-            error += dd.y;
-
-            if (error > dd.x)
-            {
-                p.y += ystep;
-                error -= dd.x;
-
-                if (error + errorprev < dd.x)
-                    func({p.x, p.y - ystep});
-                else if (error + errorprev > dd.x)
-                    func({p.x - xstep, p.y});
-                else
-                {
-                    func({p.x, p.y - ystep});
-                    func({p.x - xstep, p.y});
-                }
-            }
-
-            func(p);
-            errorprev = error;
-        }
-    }
-    else
-    {
-        int errorprev = d.y;
-        int error = d.y;
-
-        for (int i = 0; i < d.y; i++)
-        {
-            p.y += ystep;
-            error += dd.x;
-
-            if (error > dd.y)
-            {
-                p.x += xstep;
-                error -= dd.y;
-
-                if (error + errorprev < dd.y)
-                    func({p.x - xstep, p.y});
-                else if (error + errorprev > dd.y)
-                    func({p.x, p.y - ystep});
-                else
-                {
-                    func({p.x - xstep, p.y});
-                    func({p.x, p.y - ystep});
-                }
-            }
-
-            func(p);
-            errorprev = error;
-        }
-    }
 }
 
 LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor)
@@ -288,6 +195,19 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             });
     });
 
+    addEventHandler<sf::Event::MouseButtonPressed>([&](const sf::Event::MouseButtonPressed &event)
+    {
+        if (event.button == sf::Mouse::Button::Left)
+            drawBuffer.set(floor(worldPos), true);
+
+        if (event.button == sf::Mouse::Button::Right)
+            pushTask([worldPos = worldPos](const LifeBoard &lifeBoard)
+            {
+                LifeBoard result = lifeBoard;
+                return result.set(floor(worldPos), false);
+            });
+    });
+
     addEventHandler<sf::Event::MouseMoved>([&](const sf::Event::MouseMoved &)
     {
         if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
@@ -297,10 +217,17 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             });
 
         if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
+        {
+            BitBoard eraseBuffer;
             gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
             {
                 eraseBuffer.set(pos, true);
             });
+            pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
+            {
+                return lifeBoard - eraseBuffer;
+            });
+        }
     });
 
     addEventHandler<sf::Event::MouseButtonReleased>([&](const sf::Event::MouseButtonReleased &event)
@@ -312,15 +239,6 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
                 return lifeBoard | drawBuffer;
             });
             drawBuffer = BitBoard();
-        }
-
-        if (event.button == sf::Mouse::Button::Right)
-        {
-            pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
-            {
-                return lifeBoard - eraseBuffer;
-            });
-            eraseBuffer = BitBoard();
         }
     });
 }
@@ -344,7 +262,7 @@ static void runBenchmark(const Options &, Logger &logger)
     auto t1 = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < Iterations; i++)
     {
-        lifeBoard = std::move(lifeBoard.next());
+        lifeBoard = lifeBoard.next();
     }
     auto t2 = std::chrono::high_resolution_clock::now();
 

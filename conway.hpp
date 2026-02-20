@@ -4,12 +4,11 @@
 
 #include <SFML/Graphics.hpp>
 #include <atomic>
+#include <boost/unordered/unordered_flat_map.hpp>
 #include <functional>
 #include <memory>
-#include <unordered_map>
-#include <unordered_set>
 
-namespace std
+namespace boost
 {
     template <>
     struct hash<sf::Vector2i>
@@ -83,7 +82,7 @@ public:
         Chunk result = *this;
 
         while (n--)
-            result = std::move(result.shiftLeft());
+            result = result.shiftLeft();
 
         return result;
     }
@@ -98,7 +97,7 @@ public:
         Chunk result = *this;
 
         while (n--)
-            result = std::move(result.shiftRight());
+            result = result.shiftRight();
 
         return result;
     }
@@ -113,7 +112,7 @@ public:
         Chunk result = *this;
 
         while (n--)
-            result = std::move(result.shiftUp());
+            result = result.shiftUp();
 
         return result;
     }
@@ -128,7 +127,7 @@ public:
         Chunk result = *this;
 
         while (n--)
-            result = std::move(result.shiftDown());
+            result = result.shiftDown();
 
         return result;
     }
@@ -188,48 +187,48 @@ public:
 class BitBoard
 {
 private:
-    std::unordered_map<sf::Vector2i, Chunk> m_chunks;
+    boost::unordered_flat_map<sf::Vector2i, Chunk> m_chunks;
 
 public:
-    void set(sf::Vector2i pos, bool state);
+    BitBoard &set(sf::Vector2i pos, bool state);
     bool get(sf::Vector2i pos) const;
 
-    std::unordered_map<sf::Vector2i, Chunk>::iterator find(const sf::Vector2i &pos)
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator find(const sf::Vector2i &pos)
     {
         return m_chunks.find(pos);
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::const_iterator find(const sf::Vector2i &pos) const
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator find(const sf::Vector2i &pos) const
     {
         return m_chunks.find(pos);
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::iterator erase(std::unordered_map<sf::Vector2i, Chunk>::iterator it)
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator erase(boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator it)
     {
         return m_chunks.erase(it);
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::size_type erase(const sf::Vector2i &pos)
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::size_type erase(const sf::Vector2i &pos)
     {
         return m_chunks.erase(pos);
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::iterator begin() noexcept
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator begin() noexcept
     {
         return m_chunks.begin();
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::const_iterator begin() const noexcept
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator begin() const noexcept
     {
         return m_chunks.begin();
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::iterator end() noexcept
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator end() noexcept
     {
         return m_chunks.end();
     }
 
-    std::unordered_map<sf::Vector2i, Chunk>::const_iterator end() const noexcept
+    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator end() const noexcept
     {
         return m_chunks.end();
     }
@@ -269,9 +268,10 @@ public:
 
     LifeBoard next() const;
 
-    void set(sf::Vector2i pos, bool state)
+    LifeBoard &set(sf::Vector2i pos, bool state)
     {
         m_board.set(pos, state);
+        return *this;
     }
 
     bool get(sf::Vector2i pos) const

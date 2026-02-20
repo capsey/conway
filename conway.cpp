@@ -1,6 +1,7 @@
 #include "conway.hpp"
+#include "utility.hpp"
 
-#include <cmath>
+#include <boost/unordered_set.hpp>
 #include <iostream>
 
 Chunk &Chunk::set(sf::Vector2i pos, bool state)
@@ -19,9 +20,9 @@ bool Chunk::get(sf::Vector2i pos) const
     return (m_data >> i) & 1;
 }
 
-void BitBoard::set(sf::Vector2i pos, bool state)
+BitBoard &BitBoard::set(sf::Vector2i pos, bool state)
 {
-    sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
+    sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
     auto entry = m_chunks.find(chunkPos);
@@ -35,11 +36,13 @@ void BitBoard::set(sf::Vector2i pos, bool state)
     {
         m_chunks[chunkPos].set(localPos, state);
     }
+
+    return *this;
 }
 
 bool BitBoard::get(sf::Vector2i pos) const
 {
-    sf::Vector2i chunkPos((int)std::floor((float)pos.x / 8.0F), (int)std::floor((float)pos.y / 8.0F));
+    sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
     auto entry = m_chunks.find(chunkPos);
@@ -105,7 +108,7 @@ inline static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, 
     return {s0, s1, s2, c2};
 }
 
-inline static Chunk process(const BitBoard &board, sf::Vector2i pos, Chunk x, std::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
+inline static Chunk process(const BitBoard &board, sf::Vector2i pos, Chunk x, boost::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
 {
     Chunk x0 = x.shiftRight(); // left neighbor
     Chunk x1 = x.shiftLeft();  // right neighbor
@@ -241,7 +244,7 @@ LifeBoard LifeBoard::next() const
     LifeBoard result = *this;
     result.m_ticks++;
 
-    std::unordered_set<sf::Vector2i> potentialChunks;
+    boost::unordered_set<sf::Vector2i> potentialChunks;
 
     for (auto it = m_board.begin(); it != m_board.end(); it++)
         if (Chunk y = process(m_board, it->first, it->second, &potentialChunks))
