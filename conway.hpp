@@ -159,47 +159,57 @@ public:
     BitBoard &set(sf::Vector2i pos, bool state);
     bool get(sf::Vector2i pos) const;
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator find(const sf::Vector2i &pos)
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator find(const sf::Vector2i &pos)
     {
         return m_chunks.find(pos);
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator find(const sf::Vector2i &pos) const
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator find(const sf::Vector2i &pos) const
     {
         return m_chunks.find(pos);
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator erase(boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator it)
+    inline bool contains(const sf::Vector2i &pos) const
+    {
+        return m_chunks.contains(pos);
+    }
+
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator erase(boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator it)
     {
         return m_chunks.erase(it);
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::size_type erase(const sf::Vector2i &pos)
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::size_type erase(const sf::Vector2i &pos)
     {
         return m_chunks.erase(pos);
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator begin() noexcept
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator begin() noexcept
     {
         return m_chunks.begin();
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator begin() const noexcept
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator begin() const noexcept
     {
         return m_chunks.begin();
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator end() noexcept
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::iterator end() noexcept
     {
         return m_chunks.end();
     }
 
-    boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator end() const noexcept
+    inline boost::unordered_flat_map<sf::Vector2i, Chunk>::const_iterator end() const noexcept
     {
         return m_chunks.end();
     }
 
-    Chunk &operator[](const sf::Vector2i &pos)
+    inline void clear()
+    {
+        m_chunks.clear();
+    }
+
+    inline Chunk &operator[](const sf::Vector2i &pos)
     {
         return m_chunks[pos];
     }
@@ -232,7 +242,7 @@ public:
         return m_board;
     }
 
-    LifeBoard next() const;
+    LifeBoard &tick(const LifeBoard &previous);
 
     LifeBoard &set(sf::Vector2i pos, bool state)
     {
@@ -245,7 +255,7 @@ public:
         return m_board.get(pos);
     }
 
-    unsigned int ticks()
+    unsigned int ticks() const
     {
         return m_ticks;
     }

@@ -1,4 +1,4 @@
-BUILD ?= debug
+BUILD ?= release
 
 BINARY := conway
 
@@ -8,7 +8,7 @@ DEPS := $(SRCS:.cpp=.d)
 
 CXX := g++
 CXXFLAGS.debug = -g3 -O0 -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
-CXXFLAGS.release = -O3 -march=native -DNDEBUG
+CXXFLAGS.release = -O3 -g -march=native -DNDEBUG
 CXXFLAGS := -std=c++20 $(CXXFLAGS.$(BUILD)) -Wall -Wextra -Werror -pedantic -MMD -MP
 LDFLAGS.debug = -fsanitize=address,undefined
 LDFLAGS.release =

@@ -49,20 +49,30 @@ public:
     };
 };
 
-class Simulation
+class Simulation : public std::enable_shared_from_this<Simulation>
 {
 private:
+    std::thread m_thread;
+
     std::atomic<std::shared_ptr<const LifeBoard>> m_data;
 
     bool m_running = true;
     bool m_paused = false;
-    std::queue<std::function<LifeBoard(const LifeBoard &)>> m_taskQueue;
+    std::queue<std::function<std::shared_ptr<const LifeBoard>()>> m_taskQueue;
+    std::mutex m_tickingMutex;
+    std::condition_variable m_tickingCondition;
 
-    std::thread m_thread;
-    std::mutex m_mutex;
-    std::condition_variable m_condition;
+    std::vector<LifeBoard *> m_pool;
+    std::mutex m_poolMutex;
+
+    std::exception_ptr m_exception;
+    std::mutex m_exceptionMutex;
+
+    std::shared_ptr<LifeBoard> acquire();
+    void clear();
 
     void tickingThread();
+    void pushTask(std::function<std::shared_ptr<const LifeBoard>()> task);
 
 protected:
     Logger &logger;
@@ -70,27 +80,31 @@ protected:
 public:
     Simulation(Logger &logger) : m_data(std::make_shared<const LifeBoard>()), logger(logger) {}
     Simulation(Logger &logger, LifeBoard data) : m_data(std::make_shared<const LifeBoard>(std::move(data))), logger(logger) {}
+    ~Simulation();
 
     void start();
     bool togglePause();
-    void pushTask(std::function<LifeBoard(const LifeBoard &)> task);
+    void scheduleStep();
+    void scheduleModify(std::function<void(LifeBoard &)> func);
+    void scheduleClear();
     void stop();
 
-    std::shared_ptr<const LifeBoard> get()
+    std::shared_ptr<const LifeBoard> snapshot()
     {
         return m_data.load();
     }
 
-    void reset()
+    std::exception_ptr exception()
     {
-        m_data.store(std::make_shared<const LifeBoard>());
+        std::lock_guard lock(m_exceptionMutex);
+        return m_exception;
     }
 };
 
 class LifeWindow : public Window
 {
 protected:
-    Simulation simulation;
+    std::shared_ptr<Simulation> simulation;
     BitBoard drawBuffer;
 
     void initialize() override;

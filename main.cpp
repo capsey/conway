@@ -94,11 +94,54 @@ LogLevel Options::getLogLevel()
     return level;
 }
 
+std::shared_ptr<LifeBoard> Simulation::acquire()
+{
+    LifeBoard *object = nullptr;
+
+    {
+        std::lock_guard lock(m_poolMutex);
+
+        if (!m_pool.empty())
+        {
+            object = m_pool.back();
+            m_pool.pop_back();
+        }
+    }
+
+    if (!object)
+        object = new LifeBoard();
+
+    std::weak_ptr<Simulation> weak_simulation = shared_from_this();
+
+    return std::shared_ptr<LifeBoard>(object, [weak_simulation](LifeBoard *object)
+    {
+        if (auto simulation = weak_simulation.lock())
+        {
+            std::lock_guard lock(simulation->m_poolMutex);
+            simulation->m_pool.push_back(object);
+        }
+        else
+        {
+            delete object;
+        }
+    });
+}
+
+void Simulation::clear()
+{
+    std::lock_guard lock(m_poolMutex);
+
+    for (size_t i = 0; i < m_pool.size(); i++)
+        delete m_pool[i];
+
+    m_pool.clear();
+}
+
 void Simulation::tickingThread()
 {
     try
     {
-        std::unique_lock lock(m_mutex);
+        std::unique_lock lock(m_tickingMutex);
         logger.info("The ticking thread started.");
 
         while (m_running)
@@ -106,7 +149,9 @@ void Simulation::tickingThread()
             if (!m_paused)
             {
                 lock.unlock();
-                m_data.store(std::make_shared<const LifeBoard>(m_data.load()->next()));
+                std::shared_ptr<LifeBoard> buffer = acquire();
+                buffer->tick(*m_data.load());
+                m_data.store(buffer);
                 lock.lock();
             }
 
@@ -116,11 +161,11 @@ void Simulation::tickingThread()
                 m_taskQueue.pop();
 
                 lock.unlock();
-                m_data.store(std::make_shared<const LifeBoard>(task(*m_data.load())));
+                m_data.store(task());
                 lock.lock();
             }
 
-            m_condition.wait(lock, [&]
+            m_tickingCondition.wait(lock, [&]
             {
                 return !m_running || !m_paused || !m_taskQueue.empty();
             });
@@ -129,7 +174,21 @@ void Simulation::tickingThread()
     catch (const std::exception &e)
     {
         logger.error(e.what());
+        std::lock_guard lock(m_exceptionMutex);
+        m_exception = std::current_exception();
     }
+}
+
+void Simulation::pushTask(std::function<std::shared_ptr<const LifeBoard>()> task)
+{
+    std::lock_guard lock(m_tickingMutex);
+    m_taskQueue.emplace(task);
+    m_tickingCondition.notify_all();
+}
+
+Simulation::~Simulation()
+{
+    clear();
 }
 
 void Simulation::start()
@@ -141,26 +200,48 @@ void Simulation::start()
 bool Simulation::togglePause()
 {
     logger.debug("Toggling pause state of the simulation.");
-    std::lock_guard lock(m_mutex);
+    std::lock_guard lock(m_tickingMutex);
     m_paused = !m_paused;
-    m_condition.notify_all();
+    m_tickingCondition.notify_all();
     return m_paused;
 }
 
-void Simulation::pushTask(std::function<LifeBoard(const LifeBoard &)> task)
+void Simulation::scheduleStep()
 {
-    logger.debug("Task pushed to the queue.");
-    std::lock_guard lock(m_mutex);
-    m_taskQueue.emplace(task);
-    m_condition.notify_all();
+    pushTask([&]()
+    {
+        std::shared_ptr<LifeBoard> buffer = acquire();
+        buffer->tick(*m_data.load());
+        return buffer;
+    });
+}
+
+void Simulation::scheduleModify(std::function<void(LifeBoard &)> func)
+{
+    pushTask([this, func = std::move(func)]()
+    {
+        std::shared_ptr<LifeBoard> buffer = acquire();
+        *buffer = *m_data.load();
+        func(*buffer);
+        return buffer;
+    });
+}
+
+void Simulation::scheduleClear()
+{
+    pushTask([&]()
+    {
+        clear();
+        return acquire();
+    });
 }
 
 void Simulation::stop()
 {
     {
-        std::lock_guard lock(m_mutex);
+        std::lock_guard lock(m_tickingMutex);
         m_running = false;
-        m_condition.notify_all();
+        m_tickingCondition.notify_all();
     }
 
     logger.info("Joining the ticking thread...");
@@ -169,45 +250,41 @@ void Simulation::stop()
 
 void LifeWindow::initialize()
 {
-    simulation.start();
+    simulation->start();
 }
 
 void LifeWindow::deinitialize()
 {
-    simulation.stop();
+    simulation->stop();
 }
 
 void LifeWindow::update()
 {
+    if (simulation->exception())
+        window.close();
 }
 
 void LifeWindow::draw()
 {
-    window.draw(LifeBoardRenderer(*simulation.get(), CellColor));
+    window.draw(LifeBoardRenderer(*simulation->snapshot(), CellColor));
     window.draw(BitBoardRenderer(drawBuffer, CellColor));
 }
 
-LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor), simulation(logger)
+LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) : Window(logger, width, height, "Conway's Game of Life", BackgroundColor), simulation(std::make_shared<Simulation>(logger))
 {
     addEventHandler<sf::Event::KeyPressed>([&](const sf::Event::KeyPressed &event)
     {
         if (event.scancode == sf::Keyboard::Scan::Space)
         {
-            bool paused = simulation.togglePause();
+            bool paused = simulation->togglePause();
             background = paused ? PausedColor : BackgroundColor;
         }
 
         if (event.scancode == sf::Keyboard::Scan::Right)
-            simulation.pushTask([](const LifeBoard &lifeBoard)
-            {
-                return lifeBoard.next();
-            });
+            simulation->scheduleStep();
 
         if (event.scancode == sf::Keyboard::Scan::Delete)
-            simulation.pushTask([](const LifeBoard &)
-            {
-                return LifeBoard();
-            });
+            simulation->scheduleClear();
     });
 
     addEventHandler<sf::Event::MouseButtonPressed>([&](const sf::Event::MouseButtonPressed &event)
@@ -216,10 +293,9 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             drawBuffer.set(floor(worldPos), true);
 
         if (event.button == sf::Mouse::Button::Right)
-            simulation.pushTask([worldPos = worldPos](const LifeBoard &lifeBoard)
+            simulation->scheduleModify([worldPos = worldPos](LifeBoard &lifeBoard)
             {
-                LifeBoard result = lifeBoard;
-                return result.set(floor(worldPos), false);
+                lifeBoard.set(floor(worldPos), false);
             });
     });
 
@@ -239,9 +315,9 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
                 eraseBuffer.set(pos, true);
             });
 
-            simulation.pushTask([eraseBuffer = std::move(eraseBuffer)](const LifeBoard &lifeBoard)
+            simulation->scheduleModify([eraseBuffer = std::move(eraseBuffer)](LifeBoard &lifeBoard)
             {
-                return lifeBoard - eraseBuffer;
+                lifeBoard -= eraseBuffer;
             });
         }
     });
@@ -250,9 +326,9 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
     {
         if (event.button == sf::Mouse::Button::Left)
         {
-            simulation.pushTask([drawBuffer = std::move(drawBuffer)](const LifeBoard &lifeBoard)
+            simulation->scheduleModify([drawBuffer = std::move(drawBuffer)](LifeBoard &lifeBoard)
             {
-                return lifeBoard | drawBuffer;
+                lifeBoard |= drawBuffer;
             });
 
             drawBuffer = BitBoard();
@@ -265,13 +341,14 @@ static void runBenchmark(const Options &, Logger &logger)
     constexpr int Iterations = 1'000;
     constexpr int StripeLength = 4096;
 
-    LifeBoard lifeBoard;
+    LifeBoard previousBoard;
+    LifeBoard currentBoard;
 
     logger.info("Starting benchmark with {} iterations.", Iterations);
 
     for (int i = 0; i < StripeLength; i++)
     {
-        lifeBoard.set({i, 0}, true);
+        currentBoard.set({i, 0}, true);
     }
 
     logger.debug("Initial board seeded with {} live cells.", StripeLength);
@@ -279,11 +356,12 @@ static void runBenchmark(const Options &, Logger &logger)
     auto t1 = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < Iterations; i++)
     {
-        lifeBoard = lifeBoard.next();
+        std::swap(previousBoard, currentBoard);
+        currentBoard.tick(previousBoard);
     }
     auto t2 = std::chrono::high_resolution_clock::now();
 
-    logger.debug("Last generation tick value is {}.", lifeBoard.ticks());
+    logger.debug("Last generation tick value is {}.", previousBoard.ticks());
 
     std::chrono::duration<double, std::milli> duration = t2 - t1;
     double throughput = 1000.0 * (double)Iterations / duration.count();

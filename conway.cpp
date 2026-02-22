@@ -239,27 +239,22 @@ inline static Chunk process(const BitBoard &board, sf::Vector2i pos, Chunk x, bo
     return r1 & ~r2 & (r0 | x);
 }
 
-LifeBoard LifeBoard::next() const
+LifeBoard &LifeBoard::tick(const LifeBoard &previous)
 {
-    LifeBoard result = *this;
-    result.m_ticks++;
+    m_board.clear();
+    m_ticks = previous.m_ticks + 1;
 
     boost::unordered_set<sf::Vector2i> potentialChunks;
 
-    for (auto it = m_board.begin(); it != m_board.end(); it++)
-        if (Chunk y = process(m_board, it->first, it->second, &potentialChunks))
-        {
-            if (y != it->second)
-                result.m_board[it->first] = std::move(y);
-        }
-        else
-            result.m_board.erase(it->first);
+    for (auto it = previous.m_board.begin(); it != previous.m_board.end(); it++)
+        if (Chunk y = process(previous.m_board, it->first, it->second, &potentialChunks))
+            m_board[it->first] = std::move(y);
 
     for (auto &pos : potentialChunks)
-        if (Chunk y = process(m_board, pos, Chunk()))
-            result.m_board[pos] = std::move(y);
+        if (Chunk y = process(previous.m_board, pos, Chunk()))
+            m_board[pos] = std::move(y);
 
-    return result;
+    return *this;
 }
 
 static sf::Texture _texture;
