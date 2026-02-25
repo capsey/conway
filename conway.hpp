@@ -1,6 +1,7 @@
 #pragma once
 
 #include "logger.hpp"
+#include "utility.hpp"
 
 #include <SFML/Graphics.hpp>
 #include <atomic>
@@ -27,23 +28,36 @@ private:
     uint64_t m_data;
 
 public:
-    Chunk() : m_data(0) {}
-    explicit Chunk(uint64_t data) : m_data(data) {}
+    constexpr Chunk() : m_data(0) {}
+    explicit constexpr Chunk(uint64_t data) : m_data(data) {}
 
-    inline uint64_t data() const
+    constexpr uint64_t data() const
     {
         return m_data;
     }
 
-    inline Chunk &set(sf::Vector2i pos, bool state);
-    inline bool get(sf::Vector2i pos) const;
+    constexpr Chunk &set(sf::Vector2i pos, bool state)
+    {
+        int i = (pos.y * 8) + pos.x;
+        assert(i >= 0 && i < 64);
+        uint64_t mask = 1ULL << i;
+        m_data = state ? m_data | mask : m_data & ~mask;
+        return *this;
+    }
 
-    inline Chunk shiftLeft() const
+    constexpr bool get(sf::Vector2i pos) const
+    {
+        int i = (pos.y * 8) + pos.x;
+        assert(i >= 0 && i < 64);
+        return (m_data >> i) & 1;
+    }
+
+    constexpr Chunk shiftLeft() const
     {
         return Chunk((m_data >> 1) & 0x7F7F7F7F7F7F7F7FULL);
     }
 
-    inline Chunk shiftLeft(unsigned int n) const
+    constexpr Chunk shiftLeft(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -53,12 +67,12 @@ public:
         return result;
     }
 
-    inline Chunk shiftRight() const
+    constexpr Chunk shiftRight() const
     {
         return Chunk((m_data << 1) & 0xFEFEFEFEFEFEFEFEULL);
     }
 
-    inline Chunk shiftRight(unsigned int n) const
+    constexpr Chunk shiftRight(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -68,12 +82,12 @@ public:
         return result;
     }
 
-    inline Chunk shiftUp() const
+    constexpr Chunk shiftUp() const
     {
         return Chunk(m_data >> 8);
     }
 
-    inline Chunk shiftUp(unsigned int n) const
+    constexpr Chunk shiftUp(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -83,12 +97,12 @@ public:
         return result;
     }
 
-    inline Chunk shiftDown() const
+    constexpr Chunk shiftDown() const
     {
         return Chunk(m_data << 8);
     }
 
-    inline Chunk shiftDown(unsigned int n) const
+    constexpr Chunk shiftDown(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -98,64 +112,64 @@ public:
         return result;
     }
 
-    inline explicit operator bool() const
+    constexpr explicit operator bool() const
     {
         return m_data;
     }
 
-    inline bool operator==(const Chunk &rhs) const
+    constexpr bool operator==(const Chunk &rhs) const
     {
         return m_data == rhs.m_data;
     }
 
-    inline Chunk &operator|=(const Chunk &other)
+    constexpr Chunk &operator|=(const Chunk &other)
     {
         m_data |= other.m_data;
         return *this;
     }
 
-    inline Chunk &operator&=(const Chunk &other)
+    constexpr Chunk &operator&=(const Chunk &other)
     {
         m_data &= other.m_data;
         return *this;
     }
 
-    inline Chunk &operator^=(const Chunk &other)
+    constexpr Chunk &operator^=(const Chunk &other)
     {
         m_data ^= other.m_data;
         return *this;
     }
 
-    inline Chunk &operator-=(const Chunk &other)
+    constexpr Chunk &operator-=(const Chunk &other)
     {
         m_data &= ~other.m_data;
         return *this;
     }
 
-    inline Chunk operator~() const
+    constexpr Chunk operator~() const
     {
         return Chunk(~m_data);
     }
 
-    inline friend Chunk operator|(Chunk lhs, const Chunk &rhs)
+    constexpr friend Chunk operator|(Chunk lhs, const Chunk &rhs)
     {
         lhs |= rhs;
         return lhs;
     }
 
-    inline friend Chunk operator&(Chunk lhs, const Chunk &rhs)
+    constexpr friend Chunk operator&(Chunk lhs, const Chunk &rhs)
     {
         lhs &= rhs;
         return lhs;
     }
 
-    inline friend Chunk operator^(Chunk lhs, const Chunk &rhs)
+    constexpr friend Chunk operator^(Chunk lhs, const Chunk &rhs)
     {
         lhs ^= rhs;
         return lhs;
     }
 
-    inline friend Chunk operator-(Chunk lhs, const Chunk &rhs)
+    constexpr friend Chunk operator-(Chunk lhs, const Chunk &rhs)
     {
         lhs -= rhs;
         return lhs;
@@ -172,8 +186,8 @@ public:
         Chunk chunk;
         unsigned int generation;
 
-        Node() = default;
-        Node(Chunk chunk, unsigned int generation) : chunk(chunk), generation(generation) {}
+        constexpr Node() = default;
+        constexpr Node(Chunk chunk, unsigned int generation) : chunk(chunk), generation(generation) {}
     };
 
     struct Meta
@@ -188,8 +202,8 @@ public:
         size_t se = Invalid;
         sf::Vector2i pos;
 
-        Meta() = default;
-        Meta(sf::Vector2i pos) : pos(pos) {}
+        constexpr Meta() = default;
+        constexpr Meta(sf::Vector2i pos) : pos(pos) {}
     };
 
 private:
@@ -199,9 +213,9 @@ private:
         Node &node;
         Meta &meta;
 
-        Proxy(Node &node, Meta &meta) : node(node), meta(meta) {}
+        constexpr Proxy(Node &node, Meta &meta) : node(node), meta(meta) {}
 
-        Proxy *operator->()
+        constexpr Proxy *operator->()
         {
             return this;
         }
@@ -222,7 +236,7 @@ private:
         unsigned int m_generation;
         size_t m_index;
 
-        void skipEmpty()
+        constexpr void skipStale()
         {
             assert(m_nodes && m_metas);
             while (m_index < m_nodes->size() && (*m_nodes)[m_index].generation != m_generation)
@@ -230,51 +244,51 @@ private:
         }
 
     public:
-        Iterator(NodeVector *nodes, MetaVector *metas, unsigned int generation, size_t index) : m_nodes(nodes), m_metas(metas), m_generation(generation), m_index(index)
+        constexpr Iterator(NodeVector *nodes, MetaVector *metas, unsigned int generation, size_t index) : m_nodes(nodes), m_metas(metas), m_generation(generation), m_index(index)
         {
             assert(nodes->size() == metas->size());
-            skipEmpty();
+            skipStale();
         }
 
         template <typename OtherNode, typename OtherMeta>
             requires std::is_convertible_v<OtherNode *, Node *> && std::is_convertible_v<OtherMeta *, Meta *>
-        Iterator(const Iterator<OtherNode, OtherMeta> &other) : Iterator(other.m_nodes, other.m_metas, other.m_generation, other.m_index)
+        constexpr Iterator(const Iterator<OtherNode, OtherMeta> &other) : Iterator(other.m_nodes, other.m_metas, other.m_generation, other.m_index)
         {
         }
 
-        Proxy<Node, Meta> operator*() const
-        {
-            assert(m_nodes && m_metas && m_index < m_nodes->size() && m_index < m_metas->size());
-            return {(*m_nodes)[m_index], (*m_metas)[m_index]};
-        }
-
-        Proxy<Node, Meta> operator->() const
+        constexpr Proxy<Node, Meta> operator*() const
         {
             assert(m_nodes && m_metas && m_index < m_nodes->size() && m_index < m_metas->size());
             return {(*m_nodes)[m_index], (*m_metas)[m_index]};
         }
 
-        Iterator &operator++()
+        constexpr Proxy<Node, Meta> operator->() const
+        {
+            assert(m_nodes && m_metas && m_index < m_nodes->size() && m_index < m_metas->size());
+            return {(*m_nodes)[m_index], (*m_metas)[m_index]};
+        }
+
+        constexpr Iterator &operator++()
         {
             m_index++;
-            skipEmpty();
+            skipStale();
             return *this;
         }
 
-        Iterator operator++(int)
+        constexpr Iterator operator++(int)
         {
             Iterator result = *this;
             m_index++;
-            skipEmpty();
+            skipStale();
             return result;
         }
 
-        bool operator==(const Iterator &other) const
+        constexpr bool operator==(const Iterator &other) const
         {
             return m_nodes == other.m_nodes && m_metas == other.m_metas && m_generation == other.m_generation && m_index == other.m_index;
         }
 
-        bool operator!=(const Iterator &other) const
+        constexpr bool operator!=(const Iterator &other) const
         {
             return !(*this == other);
         }
@@ -286,12 +300,7 @@ private:
     unsigned int m_generation;
     size_t m_firstReusable;
 
-public:
-    using iterator = Iterator<Node, Meta>;
-    using const_iterator = Iterator<const Node, const Meta>;
-
-private:
-    size_t allocate(Chunk chunk, sf::Vector2i pos)
+    inline size_t allocate(Chunk chunk, sf::Vector2i pos)
     {
         size_t index;
 
@@ -319,9 +328,10 @@ private:
         return index;
     }
 
-    void connect(size_t index, sf::Vector2i pos)
+    inline void connect(size_t index, sf::Vector2i pos)
     {
         Meta &meta = m_metas[index];
+        meta = Meta();
 
         boost::unordered_flat_map<sf::Vector2i, size_t>::iterator entry;
         bool n = false;
@@ -592,7 +602,7 @@ private:
         m_map[pos] = index;
     }
 
-    void disconnect(size_t index)
+    inline void disconnect(size_t index)
     {
         Meta &meta = m_metas[index];
 
@@ -624,33 +634,68 @@ private:
     }
 
 public:
-    BitBoard() : m_nodes(), m_metas(), m_map(), m_generation(0), m_firstReusable(0) {}
-    BitBoard(unsigned int generation) : m_nodes(), m_metas(), m_map(), m_generation(generation), m_firstReusable(0) {}
+    using iterator = Iterator<Node, Meta>;
+    using const_iterator = Iterator<const Node, const Meta>;
 
-    BitBoard &set(sf::Vector2i pos, bool state);
-    bool get(sf::Vector2i pos) const;
+    inline BitBoard() : m_nodes(), m_metas(), m_map(), m_generation(0), m_firstReusable(0) {}
+    inline BitBoard(unsigned int generation) : m_nodes(), m_metas(), m_map(), m_generation(generation), m_firstReusable(0) {}
 
-    iterator begin()
+    inline BitBoard &set(sf::Vector2i pos, bool state)
+    {
+        sf::Vector2i chunkPos = utilities::floorDiv(pos, {8, 8});
+        sf::Vector2i localPos = pos - (chunkPos * 8);
+
+        if (auto entry = m_map.find(chunkPos); entry != m_map.end())
+        {
+            Node &node = m_nodes[entry->second];
+
+            if (node.generation == m_generation)
+                node.chunk.set(localPos, state);
+            else
+                node.chunk = Chunk().set(localPos, state);
+
+            node.generation = m_generation;
+        }
+        else if (state)
+        {
+            allocate(Chunk().set(localPos, state), chunkPos);
+        }
+
+        return *this;
+    }
+
+    inline bool get(sf::Vector2i pos) const
+    {
+        sf::Vector2i chunkPos = utilities::floorDiv(pos, {8, 8});
+        sf::Vector2i localPos = pos - (chunkPos * 8);
+
+        if (auto entry = m_map.find(chunkPos); entry != m_map.end())
+            return m_nodes[entry->second].chunk.get(localPos);
+
+        return false;
+    }
+
+    constexpr iterator begin()
     {
         return iterator(&m_nodes, &m_metas, m_generation, 0);
     }
 
-    const_iterator begin() const
+    constexpr const_iterator begin() const
     {
         return const_iterator(&m_nodes, &m_metas, m_generation, 0);
     }
 
-    iterator end()
+    constexpr iterator end()
     {
         return iterator(&m_nodes, &m_metas, m_generation, m_nodes.size());
     }
 
-    const_iterator end() const
+    constexpr const_iterator end() const
     {
         return const_iterator(&m_nodes, &m_metas, m_generation, m_nodes.size());
     }
 
-    iterator find(sf::Vector2i pos)
+    inline iterator find(sf::Vector2i pos)
     {
         if (auto entry = m_map.find(pos); entry != m_map.end())
         {
@@ -662,7 +707,7 @@ public:
         return end();
     }
 
-    const_iterator find(sf::Vector2i pos) const
+    inline const_iterator find(sf::Vector2i pos) const
     {
         if (auto entry = m_map.find(pos); entry != m_map.end())
         {
@@ -674,7 +719,7 @@ public:
         return end();
     }
 
-    void set(sf::Vector2i pos, Chunk chunk)
+    inline void set(sf::Vector2i pos, Chunk chunk)
     {
         if (auto entry = m_map.find(pos); entry != m_map.end())
         {
@@ -689,39 +734,85 @@ public:
         }
     }
 
-    unsigned int getGeneration() const
+    constexpr unsigned int getGeneration() const
     {
         return m_generation;
     }
 
-    void setGeneration(unsigned int generation)
+    constexpr void setGeneration(unsigned int generation)
     {
         m_generation = generation;
         m_firstReusable = 0;
     }
 
-    void clear()
+    inline void clear()
     {
         m_nodes.clear();
         m_metas.clear();
         m_map.clear();
     }
 
-    const Chunk &operator[](size_t index) const
+    constexpr Chunk operator[](size_t index) const
     {
-        return m_nodes[index].chunk;
+        assert(index < m_nodes.size());
+        const Node &node = m_nodes[index];
+
+        if (node.generation != m_generation)
+            return Chunk();
+
+        return node.chunk;
     }
 
-    BitBoard &operator|=(const BitBoard &other);
-    BitBoard &operator-=(const BitBoard &other);
+    inline BitBoard &operator|=(const BitBoard &other)
+    {
+        for (auto it = other.begin(); it != other.end(); it++)
+        {
+            if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
+            {
+                Node &node = m_nodes[entry->second];
 
-    friend BitBoard operator|(BitBoard lhs, const BitBoard &rhs)
+                if (node.generation == m_generation)
+                    node.chunk |= it->node.chunk;
+                else
+                    node.chunk = it->node.chunk;
+
+                node.generation = m_generation;
+            }
+            else
+            {
+                allocate(it->node.chunk, it->meta.pos);
+            }
+        }
+
+        return *this;
+    }
+
+    inline BitBoard &operator-=(const BitBoard &other)
+    {
+        for (auto it = other.begin(); it != other.end(); it++)
+        {
+            if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
+            {
+                Node &node = m_nodes[entry->second];
+
+                if (node.generation == m_generation)
+                {
+                    node.chunk -= it->node.chunk;
+                    node.generation = m_generation;
+                }
+            }
+        }
+
+        return *this;
+    }
+
+    inline friend BitBoard operator|(BitBoard lhs, const BitBoard &rhs)
     {
         lhs |= rhs;
         return lhs;
     }
 
-    friend BitBoard operator-(BitBoard lhs, const BitBoard &rhs)
+    inline friend BitBoard operator-(BitBoard lhs, const BitBoard &rhs)
     {
         lhs -= rhs;
         return lhs;

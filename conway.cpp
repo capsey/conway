@@ -1,122 +1,27 @@
 #include "conway.hpp"
-#include "utility.hpp"
 
 #include <boost/unordered_set.hpp>
 #include <iostream>
 
-Chunk &Chunk::set(sf::Vector2i pos, bool state)
-{
-    int i = (pos.y * 8) + pos.x;
-    assert(i >= 0 && i < 64);
-    uint64_t mask = 1ULL << i;
-    m_data = state ? m_data | mask : m_data & ~mask;
-    return *this;
-}
-
-bool Chunk::get(sf::Vector2i pos) const
-{
-    int i = (pos.y * 8) + pos.x;
-    assert(i >= 0 && i < 64);
-    return (m_data >> i) & 1;
-}
-
-BitBoard &BitBoard::set(sf::Vector2i pos, bool state)
-{
-    sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
-    sf::Vector2i localPos = pos - (chunkPos * 8);
-
-    if (auto entry = m_map.find(chunkPos); entry != m_map.end())
-    {
-        Node &node = m_nodes[entry->second];
-
-        if (node.generation == m_generation)
-            node.chunk.set(localPos, state);
-        else
-            node.chunk = Chunk().set(localPos, state);
-
-        node.generation = m_generation;
-    }
-    else if (state)
-    {
-        allocate(Chunk().set(localPos, state), chunkPos);
-    }
-
-    return *this;
-}
-
-bool BitBoard::get(sf::Vector2i pos) const
-{
-    sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
-    sf::Vector2i localPos = pos - (chunkPos * 8);
-
-    if (auto entry = m_map.find(chunkPos); entry != m_map.end())
-        return m_nodes[entry->second].chunk.get(localPos);
-
-    return false;
-}
-
-BitBoard &BitBoard::operator|=(const BitBoard &other)
-{
-    for (auto it = other.begin(); it != other.end(); it++)
-    {
-        if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
-        {
-            Node &node = m_nodes[entry->second];
-
-            if (node.generation == m_generation)
-                node.chunk |= it->node.chunk;
-            else
-                node.chunk = it->node.chunk;
-
-            node.generation = m_generation;
-        }
-        else
-        {
-            allocate(it->node.chunk, it->meta.pos);
-        }
-    }
-
-    return *this;
-}
-
-BitBoard &BitBoard::operator-=(const BitBoard &other)
-{
-    for (auto it = other.begin(); it != other.end(); it++)
-    {
-        if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
-        {
-            Node &node = m_nodes[entry->second];
-
-            if (node.generation == m_generation)
-            {
-                node.chunk -= it->node.chunk;
-                node.generation = m_generation;
-            }
-        }
-    }
-
-    return *this;
-}
-
-inline static std::pair<Chunk, Chunk> halfAdder(Chunk a, Chunk b)
+constexpr static std::pair<Chunk, Chunk> halfAdder(Chunk a, Chunk b)
 {
     return {a ^ b, a & b};
 }
 
-inline static std::pair<Chunk, Chunk> fullAdder(Chunk a, Chunk b, Chunk c)
+constexpr static std::pair<Chunk, Chunk> fullAdder(Chunk a, Chunk b, Chunk c)
 {
     Chunk s = a ^ b;
     return {s ^ c, (a & b) | (s & c)};
 }
 
-inline static std::tuple<Chunk, Chunk, Chunk> adder2(Chunk a0, Chunk a1, Chunk b0, Chunk b1)
+constexpr static std::tuple<Chunk, Chunk, Chunk> adder2(Chunk a0, Chunk a1, Chunk b0, Chunk b1)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
     return {s0, s1, c1};
 }
 
-inline static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, Chunk a2, Chunk b0, Chunk b1, Chunk b2)
+constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, Chunk a2, Chunk b0, Chunk b1, Chunk b2)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
@@ -298,7 +203,6 @@ inline static Chunk process(const BitBoard &board, sf::Vector2i pos)
 
 void tick(const BitBoard &previous, BitBoard &buffer)
 {
-    buffer.clear();
     buffer.setGeneration(previous.getGeneration() + 1);
 
     boost::unordered_set<sf::Vector2i> potentialChunks;
