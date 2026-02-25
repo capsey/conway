@@ -25,16 +25,20 @@ BitBoard &BitBoard::set(sf::Vector2i pos, bool state)
     sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
-    auto entry = m_chunks.find(chunkPos);
-
-    if (entry != m_chunks.end())
+    if (auto entry = m_map.find(chunkPos); entry != m_map.end())
     {
-        if (!entry->second.set(localPos, state))
-            m_chunks.erase(entry);
+        Node &node = m_nodes[entry->second];
+
+        if (node.generation == m_generation)
+            node.chunk.set(localPos, state);
+        else
+            node.chunk = Chunk().set(localPos, state);
+
+        node.generation = m_generation;
     }
     else if (state)
     {
-        m_chunks[chunkPos].set(localPos, state);
+        allocate(Chunk().set(localPos, state), chunkPos);
     }
 
     return *this;
@@ -45,24 +49,31 @@ bool BitBoard::get(sf::Vector2i pos) const
     sf::Vector2i chunkPos = floorDiv(pos, {8, 8});
     sf::Vector2i localPos = pos - (chunkPos * 8);
 
-    auto entry = m_chunks.find(chunkPos);
-
-    if (entry != m_chunks.end())
-        return entry->second.get(localPos);
+    if (auto entry = m_map.find(chunkPos); entry != m_map.end())
+        return m_nodes[entry->second].chunk.get(localPos);
 
     return false;
 }
 
 BitBoard &BitBoard::operator|=(const BitBoard &other)
 {
-    for (auto it = other.m_chunks.begin(); it != other.m_chunks.end(); it++)
+    for (auto it = other.begin(); it != other.end(); it++)
     {
-        auto entry = m_chunks.find(it->first);
+        if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
+        {
+            Node &node = m_nodes[entry->second];
 
-        if (entry != m_chunks.end())
-            entry->second |= it->second;
+            if (node.generation == m_generation)
+                node.chunk |= it->node.chunk;
+            else
+                node.chunk = it->node.chunk;
+
+            node.generation = m_generation;
+        }
         else
-            m_chunks[it->first] = it->second;
+        {
+            allocate(it->node.chunk, it->meta.pos);
+        }
     }
 
     return *this;
@@ -70,13 +81,18 @@ BitBoard &BitBoard::operator|=(const BitBoard &other)
 
 BitBoard &BitBoard::operator-=(const BitBoard &other)
 {
-    for (auto it = other.m_chunks.begin(); it != other.m_chunks.end(); it++)
+    for (auto it = other.begin(); it != other.end(); it++)
     {
-        auto entry = m_chunks.find(it->first);
+        if (auto entry = m_map.find(it->meta.pos); entry != m_map.end())
+        {
+            Node &node = m_nodes[entry->second];
 
-        if (entry != m_chunks.end())
-            if (!(entry->second &= ~it->second))
-                m_chunks.erase(entry);
+            if (node.generation == m_generation)
+            {
+                node.chunk -= it->node.chunk;
+                node.generation = m_generation;
+            }
+        }
     }
 
     return *this;
@@ -108,153 +124,190 @@ inline static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, 
     return {s0, s1, s2, c2};
 }
 
-inline static Chunk process(const BitBoard &board, sf::Vector2i pos, Chunk x, boost::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
+inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
 {
-    Chunk x0 = x.shiftRight(); // left neighbor
-    Chunk x1 = x.shiftLeft();  // right neighbor
-    Chunk x2 = x.shiftDown();  // upper neighbor
-    Chunk x3 = x.shiftUp();    // lower neighbor
-    Chunk x4 = x0.shiftDown(); // upper left neighbor
-    Chunk x5 = x0.shiftUp();   // lower left neighbor
-    Chunk x6 = x1.shiftDown(); // upper right neighbor
-    Chunk x7 = x1.shiftUp();   // lower right neighbor
+    Chunk x0 = it->node.chunk.shiftRight(); // left neighbor
+    Chunk x1 = it->node.chunk.shiftLeft();  // right neighbor
+    Chunk x2 = it->node.chunk.shiftDown();  // upper neighbor
+    Chunk x3 = it->node.chunk.shiftUp();    // lower neighbor
+    Chunk x4 = x0.shiftDown();              // upper left neighbor
+    Chunk x5 = x0.shiftUp();                // lower left neighbor
+    Chunk x6 = x1.shiftDown();              // upper right neighbor
+    Chunk x7 = x1.shiftUp();                // lower right neighbor
 
-    // left border
-    sf::Vector2i borderPos = pos + sf::Vector2i(-1, 0);
-    auto entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.n != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftLeft(7);
-        x0 |= y;
-        x4 |= y.shiftDown();
-        x5 |= y.shiftUp();
-    }
-    else if (potentialChunks && x.shiftRight(7))
-    {
-        potentialChunks->insert(borderPos);
-    }
-
-    // right border
-    borderPos = pos + sf::Vector2i(1, 0);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
-    {
-        Chunk y = entry->second.shiftRight(7);
-        x1 |= y;
-        x6 |= y.shiftDown();
-        x7 |= y.shiftUp();
-    }
-    else if (potentialChunks && x.shiftLeft(7))
-    {
-        potentialChunks->insert(borderPos);
-    }
-
-    // upper border
-    borderPos = pos + sf::Vector2i(0, -1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
-    {
-        Chunk y = entry->second.shiftUp(7);
+        Chunk y = board[it->meta.n].shiftUp(7);
         x2 |= y;
         x6 |= y.shiftLeft();
         x4 |= y.shiftRight();
     }
-    else if (potentialChunks && x.shiftDown(7))
+    else if (potentialChunks && it->node.chunk.shiftDown(7))
     {
-        potentialChunks->insert(borderPos);
+        potentialChunks->insert(it->meta.pos + sf::Vector2i(0, -1));
     }
 
-    // lower border
-    borderPos = pos + sf::Vector2i(0, 1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.s != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftDown(7);
+        Chunk y = board[it->meta.s].shiftDown(7);
         x3 |= y;
         x7 |= y.shiftLeft();
         x5 |= y.shiftRight();
     }
-    else if (potentialChunks && x.shiftUp(7))
+    else if (potentialChunks && it->node.chunk.shiftUp(7))
     {
-        potentialChunks->insert(borderPos);
+        potentialChunks->insert(it->meta.pos + sf::Vector2i(0, 1));
     }
 
-    // upper left corner
-    borderPos = pos + sf::Vector2i(-1, -1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.w != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftLeft(7).shiftUp(7);
+        Chunk y = board[it->meta.w].shiftLeft(7);
+        x0 |= y;
+        x4 |= y.shiftDown();
+        x5 |= y.shiftUp();
+    }
+    else if (potentialChunks && it->node.chunk.shiftRight(7))
+    {
+        potentialChunks->insert(it->meta.pos + sf::Vector2i(-1, 0));
+    }
+
+    if (it->meta.e != BitBoard::Invalid)
+    {
+        Chunk y = board[it->meta.e].shiftRight(7);
+        x1 |= y;
+        x6 |= y.shiftDown();
+        x7 |= y.shiftUp();
+    }
+    else if (potentialChunks && it->node.chunk.shiftLeft(7))
+    {
+        potentialChunks->insert(it->meta.pos + sf::Vector2i(1, 0));
+    }
+
+    if (it->meta.nw != BitBoard::Invalid)
+    {
+        Chunk y = board[it->meta.nw].shiftLeft(7).shiftUp(7);
         x4 |= y;
     }
 
-    // upper right corner
-    borderPos = pos + sf::Vector2i(1, -1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.ne != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftRight(7).shiftUp(7);
+        Chunk y = board[it->meta.ne].shiftRight(7).shiftUp(7);
         x6 |= y;
     }
 
-    // lower left corner
-    borderPos = pos + sf::Vector2i(-1, 1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.sw != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftLeft(7).shiftDown(7);
+        Chunk y = board[it->meta.sw].shiftLeft(7).shiftDown(7);
         x5 |= y;
     }
 
-    // lower right corner
-    borderPos = pos + sf::Vector2i(1, 1);
-    entry = board.find(borderPos);
-
-    if (entry != board.end())
+    if (it->meta.se != BitBoard::Invalid)
     {
-        Chunk y = entry->second.shiftRight(7).shiftDown(7);
+        Chunk y = board[it->meta.se].shiftRight(7).shiftDown(7);
         x7 |= y;
     }
 
-    // 1-bit layer
     auto [s01, c01] = halfAdder(x0, x1);
     auto [s23, c23] = halfAdder(x2, x3);
     auto [s45, c45] = halfAdder(x4, x5);
     auto [s67, c67] = halfAdder(x6, x7);
-
-    // 2-bit layer
     auto [q00, q01, c0] = adder2(s01, c01, s23, c23);
     auto [q10, q11, c1] = adder2(s45, c45, s67, c67);
-
-    // 3-bit layer
     auto [r0, r1, r2, r3] = adder3(q00, q01, c0, q10, q11, c1);
 
-    return r1 & ~r2 & (r0 | x);
+    return r1 & ~r2 & (r0 | it->node.chunk);
 }
 
-LifeBoard &LifeBoard::tick(const LifeBoard &previous)
+inline static Chunk process(const BitBoard &board, sf::Vector2i pos)
 {
-    m_board.clear();
-    m_ticks = previous.m_ticks + 1;
+    Chunk x0; // left neighbor
+    Chunk x1; // right neighbor
+    Chunk x2; // upper neighbor
+    Chunk x3; // lower neighbor
+    Chunk x4; // upper left neighbor
+    Chunk x5; // lower left neighbor
+    Chunk x6; // upper right neighbor
+    Chunk x7; // lower right neighbor
+
+    if (auto entry = board.find(pos + sf::Vector2i(0, -1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftUp(7);
+        x2 |= y;
+        x6 |= y.shiftLeft();
+        x4 |= y.shiftRight();
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(0, 1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftDown(7);
+        x3 |= y;
+        x7 |= y.shiftLeft();
+        x5 |= y.shiftRight();
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(-1, 0)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftLeft(7);
+        x0 |= y;
+        x4 |= y.shiftDown();
+        x5 |= y.shiftUp();
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(1, 0)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftRight(7);
+        x1 |= y;
+        x6 |= y.shiftDown();
+        x7 |= y.shiftUp();
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(-1, -1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftLeft(7).shiftUp(7);
+        x4 |= y;
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(1, -1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftRight(7).shiftUp(7);
+        x6 |= y;
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(-1, 1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftLeft(7).shiftDown(7);
+        x5 |= y;
+    }
+
+    if (auto entry = board.find(pos + sf::Vector2i(1, 1)); entry != board.end())
+    {
+        Chunk y = entry->node.chunk.shiftRight(7).shiftDown(7);
+        x7 |= y;
+    }
+
+    auto [s01, c01] = halfAdder(x0, x1);
+    auto [s23, c23] = halfAdder(x2, x3);
+    auto [s45, c45] = halfAdder(x4, x5);
+    auto [s67, c67] = halfAdder(x6, x7);
+    auto [q00, q01, c0] = adder2(s01, c01, s23, c23);
+    auto [q10, q11, c1] = adder2(s45, c45, s67, c67);
+    auto [r0, r1, r2, r3] = adder3(q00, q01, c0, q10, q11, c1);
+
+    return r0 & r1 & ~r2;
+}
+
+void tick(const BitBoard &previous, BitBoard &buffer)
+{
+    buffer.clear();
+    buffer.setGeneration(previous.getGeneration() + 1);
 
     boost::unordered_set<sf::Vector2i> potentialChunks;
 
-    for (auto it = previous.m_board.begin(); it != previous.m_board.end(); it++)
-        if (Chunk y = process(previous.m_board, it->first, it->second, &potentialChunks))
-            m_board[it->first] = std::move(y);
+    for (auto it = previous.begin(); it != previous.end(); it++)
+        buffer.set(it->meta.pos, process(previous, it, &potentialChunks));
 
     for (auto &pos : potentialChunks)
-        if (Chunk y = process(previous.m_board, pos, Chunk()))
-            m_board[pos] = std::move(y);
-
-    return *this;
+        buffer.set(pos, process(previous, pos));
 }
 
 static sf::Texture _texture;
@@ -313,14 +366,8 @@ void BitBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) c
 
     for (auto it = m_data.begin(); it != m_data.end(); it++)
     {
-        ChunkRenderer chunk(it->second, m_color);
-        chunk.setPosition(static_cast<sf::Vector2f>(it->first * 8));
+        ChunkRenderer chunk(it->node.chunk, m_color);
+        chunk.setPosition(static_cast<sf::Vector2f>(it->meta.pos * 8));
         target.draw(chunk, states);
     }
-}
-
-void LifeBoardRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) const
-{
-    BitBoardRenderer renderer(m_data.board(), m_color);
-    target.draw(renderer, states);
 }

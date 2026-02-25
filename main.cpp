@@ -94,9 +94,9 @@ LogLevel Options::getLogLevel()
     return level;
 }
 
-std::shared_ptr<LifeBoard> Simulation::acquire()
+std::shared_ptr<BitBoard> Simulation::acquire()
 {
-    LifeBoard *object = nullptr;
+    BitBoard *object = nullptr;
 
     {
         std::lock_guard lock(m_poolMutex);
@@ -109,11 +109,11 @@ std::shared_ptr<LifeBoard> Simulation::acquire()
     }
 
     if (!object)
-        object = new LifeBoard();
+        object = new BitBoard();
 
     std::weak_ptr<Simulation> weak_simulation = shared_from_this();
 
-    return std::shared_ptr<LifeBoard>(object, [weak_simulation](LifeBoard *object)
+    return std::shared_ptr<BitBoard>(object, [weak_simulation](BitBoard *object)
     {
         if (auto simulation = weak_simulation.lock())
         {
@@ -149,8 +149,8 @@ void Simulation::tickingThread()
             if (!m_paused)
             {
                 lock.unlock();
-                std::shared_ptr<LifeBoard> buffer = acquire();
-                buffer->tick(*m_data.load());
+                std::shared_ptr<BitBoard> buffer = acquire();
+                tick(*m_data.load(), *buffer);
                 m_data.store(buffer);
                 lock.lock();
             }
@@ -179,7 +179,7 @@ void Simulation::tickingThread()
     }
 }
 
-void Simulation::pushTask(std::function<std::shared_ptr<const LifeBoard>()> task)
+void Simulation::pushTask(std::function<std::shared_ptr<const BitBoard>()> task)
 {
     std::lock_guard lock(m_tickingMutex);
     m_taskQueue.emplace(task);
@@ -210,17 +210,17 @@ void Simulation::scheduleStep()
 {
     pushTask([&]()
     {
-        std::shared_ptr<LifeBoard> buffer = acquire();
-        buffer->tick(*m_data.load());
+        std::shared_ptr<BitBoard> buffer = acquire();
+        tick(*m_data.load(), *buffer);
         return buffer;
     });
 }
 
-void Simulation::scheduleModify(std::function<void(LifeBoard &)> func)
+void Simulation::scheduleModify(std::function<void(BitBoard &)> func)
 {
     pushTask([this, func = std::move(func)]()
     {
-        std::shared_ptr<LifeBoard> buffer = acquire();
+        std::shared_ptr<BitBoard> buffer = acquire();
         *buffer = *m_data.load();
         func(*buffer);
         return buffer;
@@ -266,7 +266,7 @@ void LifeWindow::update()
 
 void LifeWindow::draw()
 {
-    window.draw(LifeBoardRenderer(*simulation->snapshot(), CellColor));
+    window.draw(BitBoardRenderer(*simulation->snapshot(), CellColor));
     window.draw(BitBoardRenderer(drawBuffer, CellColor));
 }
 
@@ -293,7 +293,7 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
             drawBuffer.set(floor(worldPos), true);
 
         if (event.button == sf::Mouse::Button::Right)
-            simulation->scheduleModify([worldPos = worldPos](LifeBoard &lifeBoard)
+            simulation->scheduleModify([worldPos = worldPos](BitBoard &lifeBoard)
             {
                 lifeBoard.set(floor(worldPos), false);
             });
@@ -315,7 +315,7 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
                 eraseBuffer.set(pos, true);
             });
 
-            simulation->scheduleModify([eraseBuffer = std::move(eraseBuffer)](LifeBoard &lifeBoard)
+            simulation->scheduleModify([eraseBuffer = std::move(eraseBuffer)](BitBoard &lifeBoard)
             {
                 lifeBoard -= eraseBuffer;
             });
@@ -326,7 +326,7 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
     {
         if (event.button == sf::Mouse::Button::Left)
         {
-            simulation->scheduleModify([drawBuffer = std::move(drawBuffer)](LifeBoard &lifeBoard)
+            simulation->scheduleModify([drawBuffer = std::move(drawBuffer)](BitBoard &lifeBoard)
             {
                 lifeBoard |= drawBuffer;
             });
@@ -341,8 +341,8 @@ static void runBenchmark(const Options &, Logger &logger)
     constexpr int Iterations = 1'000;
     constexpr int StripeLength = 4096;
 
-    LifeBoard previousBoard;
-    LifeBoard currentBoard;
+    BitBoard previousBoard;
+    BitBoard currentBoard;
 
     logger.info("Starting benchmark with {} iterations.", Iterations);
 
@@ -357,11 +357,11 @@ static void runBenchmark(const Options &, Logger &logger)
     for (int i = 0; i < Iterations; i++)
     {
         std::swap(previousBoard, currentBoard);
-        currentBoard.tick(previousBoard);
+        tick(previousBoard, currentBoard);
     }
     auto t2 = std::chrono::high_resolution_clock::now();
 
-    logger.debug("Last generation tick value is {}.", previousBoard.ticks());
+    logger.debug("Last generation tick value is {}.", previousBoard.getGeneration());
 
     std::chrono::duration<double, std::milli> duration = t2 - t1;
     double throughput = 1000.0 * (double)Iterations / duration.count();
