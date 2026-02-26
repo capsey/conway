@@ -331,7 +331,7 @@ private:
     inline void connect(size_t index, sf::Vector2i pos)
     {
         Meta &meta = m_metas[index];
-        meta = Meta();
+        meta = Meta(pos);
 
         boost::unordered_flat_map<sf::Vector2i, size_t>::iterator entry;
         bool n = false;
@@ -642,7 +642,7 @@ public:
 
     inline BitBoard &set(sf::Vector2i pos, bool state)
     {
-        sf::Vector2i chunkPos = utilities::floorDiv(pos, {8, 8});
+        sf::Vector2i chunkPos = utility::floorDiv(pos, {8, 8});
         sf::Vector2i localPos = pos - (chunkPos * 8);
 
         if (auto entry = m_map.find(chunkPos); entry != m_map.end())
@@ -666,7 +666,7 @@ public:
 
     inline bool get(sf::Vector2i pos) const
     {
-        sf::Vector2i chunkPos = utilities::floorDiv(pos, {8, 8});
+        sf::Vector2i chunkPos = utility::floorDiv(pos, {8, 8});
         sf::Vector2i localPos = pos - (chunkPos * 8);
 
         if (auto entry = m_map.find(chunkPos); entry != m_map.end())
@@ -701,6 +701,7 @@ public:
         {
             if (m_nodes[entry->second].generation != m_generation)
                 return end();
+
             return iterator(&m_nodes, &m_metas, m_generation, entry->second);
         }
 
@@ -713,6 +714,7 @@ public:
         {
             if (m_nodes[entry->second].generation != m_generation)
                 return end();
+
             return const_iterator(&m_nodes, &m_metas, m_generation, entry->second);
         }
 
@@ -818,35 +820,6 @@ public:
         return lhs;
     }
 };
-
-namespace std
-{
-    template <typename Node, typename Meta>
-    struct tuple_size<typename BitBoard::Proxy<Node, Meta>> : std::integral_constant<size_t, 2>
-    {
-    };
-
-    template <typename Node, typename Meta>
-    struct tuple_element<0, typename BitBoard::Proxy<Node, Meta>>
-    {
-        using type = Node;
-    };
-
-    template <typename Node, typename Meta>
-    struct tuple_element<1, typename BitBoard::Proxy<Node, Meta>>
-    {
-        using type = Meta;
-    };
-}
-
-template <typename Node, typename Meta, std::size_t I>
-decltype(auto) get(typename BitBoard::Proxy<Node, Meta> &e)
-{
-    if constexpr (I == 0)
-        return (e.node);
-    else
-        return (e.meta);
-}
 
 void tick(const BitBoard &previous, BitBoard &buffer);
 

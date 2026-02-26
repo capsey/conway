@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <functional>
 
-namespace utilities
+namespace utility
 {
     constexpr int floor(float x)
     {

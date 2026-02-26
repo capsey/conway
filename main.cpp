@@ -290,19 +290,19 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
     addEventHandler<sf::Event::MouseButtonPressed>([&](const sf::Event::MouseButtonPressed &event)
     {
         if (event.button == sf::Mouse::Button::Left)
-            drawBuffer.set(utilities::floor(worldPos), true);
+            drawBuffer.set(utility::floor(worldPos), true);
 
         if (event.button == sf::Mouse::Button::Right)
             simulation->scheduleModify([worldPos = worldPos](BitBoard &lifeBoard)
             {
-                lifeBoard.set(utilities::floor(worldPos), false);
+                lifeBoard.set(utility::floor(worldPos), false);
             });
     });
 
     addEventHandler<sf::Event::MouseMoved>([&](const sf::Event::MouseMoved &)
     {
         if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Left))
-            utilities::gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
+            utility::gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
             {
                 drawBuffer.set(pos, true);
             });
@@ -310,7 +310,7 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
         if (sf::Mouse::isButtonPressed(sf::Mouse::Button::Right))
         {
             BitBoard eraseBuffer;
-            utilities::gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
+            utility::gridTraversal(worldPos, prevWorldPos, [&](sf::Vector2i pos)
             {
                 eraseBuffer.set(pos, true);
             });

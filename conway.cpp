@@ -29,7 +29,7 @@ constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a
     return {s0, s1, s2, c2};
 }
 
-inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> *potentialChunks = nullptr)
+inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> potentialChunks)
 {
     Chunk x0 = it->node.chunk.shiftRight(); // left neighbor
     Chunk x1 = it->node.chunk.shiftLeft();  // right neighbor
@@ -47,9 +47,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         x6 |= y.shiftLeft();
         x4 |= y.shiftRight();
     }
-    else if (potentialChunks && it->node.chunk.shiftDown(7))
+    else if (it->node.chunk.shiftDown(7))
     {
-        potentialChunks->insert(it->meta.pos + sf::Vector2i(0, -1));
+        potentialChunks.insert(it->meta.pos + sf::Vector2i(0, -1));
     }
 
     if (it->meta.s != BitBoard::Invalid)
@@ -59,9 +59,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         x7 |= y.shiftLeft();
         x5 |= y.shiftRight();
     }
-    else if (potentialChunks && it->node.chunk.shiftUp(7))
+    else if (it->node.chunk.shiftUp(7))
     {
-        potentialChunks->insert(it->meta.pos + sf::Vector2i(0, 1));
+        potentialChunks.insert(it->meta.pos + sf::Vector2i(0, 1));
     }
 
     if (it->meta.w != BitBoard::Invalid)
@@ -71,9 +71,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         x4 |= y.shiftDown();
         x5 |= y.shiftUp();
     }
-    else if (potentialChunks && it->node.chunk.shiftRight(7))
+    else if (it->node.chunk.shiftRight(7))
     {
-        potentialChunks->insert(it->meta.pos + sf::Vector2i(-1, 0));
+        potentialChunks.insert(it->meta.pos + sf::Vector2i(-1, 0));
     }
 
     if (it->meta.e != BitBoard::Invalid)
@@ -83,9 +83,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         x6 |= y.shiftDown();
         x7 |= y.shiftUp();
     }
-    else if (potentialChunks && it->node.chunk.shiftLeft(7))
+    else if (it->node.chunk.shiftLeft(7))
     {
-        potentialChunks->insert(it->meta.pos + sf::Vector2i(1, 0));
+        potentialChunks.insert(it->meta.pos + sf::Vector2i(1, 0));
     }
 
     if (it->meta.nw != BitBoard::Invalid)
@@ -201,17 +201,17 @@ inline static Chunk process(const BitBoard &board, sf::Vector2i pos)
     return r0 & r1 & ~r2;
 }
 
-void tick(const BitBoard &previous, BitBoard &buffer)
+void tick(const BitBoard &previous, BitBoard &current)
 {
-    buffer.setGeneration(previous.getGeneration() + 1);
+    current.setGeneration(previous.getGeneration() + 1);
 
     boost::unordered_set<sf::Vector2i> potentialChunks;
 
     for (auto it = previous.begin(); it != previous.end(); it++)
-        buffer.set(it->meta.pos, process(previous, it, &potentialChunks));
+        current.set(it->meta.pos, process(previous, it, potentialChunks));
 
     for (auto &pos : potentialChunks)
-        buffer.set(pos, process(previous, pos));
+        current.set(pos, process(previous, pos));
 }
 
 static sf::Texture _texture;
