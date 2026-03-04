@@ -8,8 +8,8 @@ namespace utility
 {
     constexpr int floor(float x)
     {
-        int i = (int)x;
-        return i - (i > x);
+        int i = static_cast<int>(x);
+        return i - (static_cast<float>(i) > x);
     }
 
     constexpr int floorDiv(int x, int y)

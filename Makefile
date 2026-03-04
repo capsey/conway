@@ -9,7 +9,7 @@ DEPS := $(SRCS:.cpp=.d)
 CXX := g++
 CXXFLAGS.debug = -g3 -Og -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
 CXXFLAGS.release = -O3 -g -march=native -DNDEBUG
-CXXFLAGS := -std=c++20 $(CXXFLAGS.$(BUILD)) -Wall -Wextra -Werror -pedantic -MMD -MP
+CXXFLAGS := -std=c++20 $(CXXFLAGS.$(BUILD)) -Wall -Wextra -Werror -pedantic -Wconversion -Wsign-conversion -Wnon-virtual-dtor -Woverloaded-virtual -Wold-style-cast -MMD -MP
 LDFLAGS.debug = -fsanitize=address,undefined
 LDFLAGS.release =
 LDFLAGS := $(LDFLAGS.$(BUILD))

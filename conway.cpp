@@ -29,7 +29,7 @@ constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a
     return {s0, s1, s2, c2};
 }
 
-inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> potentialChunks)
+inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> &potentialChunks)
 {
     Chunk x0 = it->node.chunk.shiftRight(); // left neighbor
     Chunk x1 = it->node.chunk.shiftLeft();  // right neighbor
@@ -40,9 +40,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
     Chunk x6 = x1.shiftDown();              // upper right neighbor
     Chunk x7 = x1.shiftUp();                // lower right neighbor
 
-    if (it->meta.n != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.n); other != board.end())
     {
-        Chunk y = board[it->meta.n].shiftUp(7);
+        Chunk y = other->node.chunk.shiftUp(7);
         x2 |= y;
         x6 |= y.shiftLeft();
         x4 |= y.shiftRight();
@@ -52,9 +52,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         potentialChunks.insert(it->meta.pos + sf::Vector2i(0, -1));
     }
 
-    if (it->meta.s != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.s); other != board.end())
     {
-        Chunk y = board[it->meta.s].shiftDown(7);
+        Chunk y = other->node.chunk.shiftDown(7);
         x3 |= y;
         x7 |= y.shiftLeft();
         x5 |= y.shiftRight();
@@ -64,9 +64,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         potentialChunks.insert(it->meta.pos + sf::Vector2i(0, 1));
     }
 
-    if (it->meta.w != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.w); other != board.end())
     {
-        Chunk y = board[it->meta.w].shiftLeft(7);
+        Chunk y = other->node.chunk.shiftLeft(7);
         x0 |= y;
         x4 |= y.shiftDown();
         x5 |= y.shiftUp();
@@ -76,9 +76,9 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         potentialChunks.insert(it->meta.pos + sf::Vector2i(-1, 0));
     }
 
-    if (it->meta.e != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.e); other != board.end())
     {
-        Chunk y = board[it->meta.e].shiftRight(7);
+        Chunk y = other->node.chunk.shiftRight(7);
         x1 |= y;
         x6 |= y.shiftDown();
         x7 |= y.shiftUp();
@@ -88,27 +88,27 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
         potentialChunks.insert(it->meta.pos + sf::Vector2i(1, 0));
     }
 
-    if (it->meta.nw != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.nw); other != board.end())
     {
-        Chunk y = board[it->meta.nw].shiftLeft(7).shiftUp(7);
+        Chunk y = other->node.chunk.shiftLeft(7).shiftUp(7);
         x4 |= y;
     }
 
-    if (it->meta.ne != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.ne); other != board.end())
     {
-        Chunk y = board[it->meta.ne].shiftRight(7).shiftUp(7);
+        Chunk y = other->node.chunk.shiftRight(7).shiftUp(7);
         x6 |= y;
     }
 
-    if (it->meta.sw != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.sw); other != board.end())
     {
-        Chunk y = board[it->meta.sw].shiftLeft(7).shiftDown(7);
+        Chunk y = other->node.chunk.shiftLeft(7).shiftDown(7);
         x5 |= y;
     }
 
-    if (it->meta.se != BitBoard::Invalid)
+    if (auto other = board.at(it->meta.se); other != board.end())
     {
-        Chunk y = board[it->meta.se].shiftRight(7).shiftDown(7);
+        Chunk y = other->node.chunk.shiftRight(7).shiftDown(7);
         x7 |= y;
     }
 
@@ -208,10 +208,12 @@ void tick(const BitBoard &previous, BitBoard &current)
     boost::unordered_set<sf::Vector2i> potentialChunks;
 
     for (auto it = previous.begin(); it != previous.end(); it++)
-        current.set(it->meta.pos, process(previous, it, potentialChunks));
+        if (auto chunk = process(previous, it, potentialChunks))
+            current.set(it->meta.pos, chunk);
 
     for (auto &pos : potentialChunks)
-        current.set(pos, process(previous, pos));
+        if (auto chunk = process(previous, pos))
+            current.set(pos, chunk);
 }
 
 static sf::Texture _texture;

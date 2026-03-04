@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-Window::Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), size(width, height), view({0.0F, 0.0F}, {(float)width, (float)height}), background(background)
+Window::Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), size(width, height), view({0.0F, 0.0F}, {static_cast<float>(width), static_cast<float>(height)}), background(background)
 {
     window.setVerticalSyncEnabled(true);
 
@@ -14,7 +14,7 @@ Window::Window(Logger &logger, unsigned int width, unsigned int height, std::str
 
     addEventHandler<sf::Event::Resized>([&](const sf::Event::Resized &event)
     {
-        float zoom = view.getSize().x / (float)size.x;
+        float zoom = view.getSize().x / static_cast<float>(size.x);
 
         size = event.size;
         view.setSize(sf::Vector2f(size));
@@ -37,7 +37,7 @@ Window::Window(Logger &logger, unsigned int width, unsigned int height, std::str
     {
         if (event.wheel == sf::Mouse::Wheel::Vertical)
         {
-            float zoom = view.getSize().x / (float)size.x;
+            float zoom = view.getSize().x / static_cast<float>(size.x);
             float newZoom = std::clamp(zoom * std::powf(0.5F, event.delta), 1.0F / 64.0F, 1.0F);
             sf::Vector2f originDrift = window.mapPixelToCoords(event.position) - window.getView().getCenter();
             view.move((1 - (newZoom / zoom)) * originDrift);

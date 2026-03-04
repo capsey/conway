@@ -17,7 +17,7 @@ namespace boost
         std::size_t operator()(const sf::Vector2i &v) const
         {
             static_assert(sizeof(v.x) == 4 && sizeof(v.y) == 4 && sizeof(size_t) == 8);
-            return ((uint64_t)v.y << 32) | (uint32_t)v.x;
+            return (static_cast<uint64_t>(v.y) << 32) | static_cast<uint32_t>(v.x);
         }
     };
 }
@@ -299,6 +299,7 @@ private:
     boost::unordered_flat_map<sf::Vector2i, size_t> m_map;
     unsigned int m_generation;
     size_t m_firstReusable;
+    size_t m_size;
 
     inline size_t allocate(Chunk chunk, sf::Vector2i pos)
     {
@@ -325,6 +326,7 @@ private:
             connect(index, pos);
         }
 
+        m_size++;
         return index;
     }
 
@@ -637,8 +639,8 @@ public:
     using iterator = Iterator<Node, Meta>;
     using const_iterator = Iterator<const Node, const Meta>;
 
-    inline BitBoard() : m_nodes(), m_metas(), m_map(), m_generation(0), m_firstReusable(0) {}
-    inline BitBoard(unsigned int generation) : m_nodes(), m_metas(), m_map(), m_generation(generation), m_firstReusable(0) {}
+    inline BitBoard() : m_nodes(), m_metas(), m_map(), m_generation(0), m_firstReusable(0), m_size(0) {}
+    inline BitBoard(unsigned int generation) : m_nodes(), m_metas(), m_map(), m_generation(generation), m_firstReusable(0), m_size(0) {}
 
     inline BitBoard &set(sf::Vector2i pos, bool state)
     {
@@ -650,11 +652,16 @@ public:
             Node &node = m_nodes[entry->second];
 
             if (node.generation == m_generation)
+            {
                 node.chunk.set(localPos, state);
+                node.generation = m_generation;
+            }
             else
+            {
+                m_size++;
                 node.chunk = Chunk().set(localPos, state);
-
-            node.generation = m_generation;
+                node.generation = m_generation;
+            }
         }
         else if (state)
         {
@@ -727,6 +734,9 @@ public:
         {
             Node &node = m_nodes[entry->second];
 
+            if (node.generation != m_generation)
+                m_size++;
+
             node.chunk = chunk;
             node.generation = m_generation;
         }
@@ -743,8 +753,10 @@ public:
 
     constexpr void setGeneration(unsigned int generation)
     {
+        assert(generation > m_generation);
         m_generation = generation;
         m_firstReusable = 0;
+        m_size = 0;
     }
 
     inline void clear()
@@ -752,17 +764,38 @@ public:
         m_nodes.clear();
         m_metas.clear();
         m_map.clear();
+        setGeneration(0);
     }
 
-    constexpr Chunk operator[](size_t index) const
+    constexpr iterator at(size_t index)
     {
+        if (index == Invalid)
+            return end();
+
         assert(index < m_nodes.size());
-        const Node &node = m_nodes[index];
 
-        if (node.generation != m_generation)
-            return Chunk();
+        if (m_nodes[index].generation != m_generation)
+            return end();
 
-        return node.chunk;
+        return iterator(&m_nodes, &m_metas, m_generation, index);
+    }
+
+    constexpr const_iterator at(size_t index) const
+    {
+        if (index == Invalid)
+            return end();
+
+        assert(index < m_nodes.size());
+
+        if (m_nodes[index].generation != m_generation)
+            return end();
+
+        return const_iterator(&m_nodes, &m_metas, m_generation, index);
+    }
+
+    constexpr size_t size() const
+    {
+        return m_size;
     }
 
     inline BitBoard &operator|=(const BitBoard &other)

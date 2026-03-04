@@ -111,11 +111,11 @@ std::shared_ptr<BitBoard> Simulation::acquire()
     if (!object)
         object = new BitBoard();
 
-    std::weak_ptr<Simulation> weak_simulation = shared_from_this();
+    std::weak_ptr<Simulation> weakSimulation = shared_from_this();
 
-    return std::shared_ptr<BitBoard>(object, [weak_simulation](BitBoard *object)
+    return std::shared_ptr<BitBoard>(object, [weakSimulation](BitBoard *object)
     {
-        if (auto simulation = weak_simulation.lock())
+        if (auto simulation = weakSimulation.lock())
         {
             std::lock_guard lock(simulation->m_poolMutex);
             simulation->m_pool.push_back(object);
@@ -338,11 +338,12 @@ LifeWindow::LifeWindow(Logger &logger, unsigned int width, unsigned int height) 
 
 static void runBenchmark(const Options &, Logger &logger)
 {
-    constexpr int Iterations = 1'000;
-    constexpr int StripeLength = 4096;
+    constexpr int Iterations = 5'000;
+    constexpr int StripeLength = 2048;
 
     BitBoard previousBoard;
     BitBoard currentBoard;
+    size_t cellCount = 0;
 
     logger.info("Starting benchmark with {} iterations.", Iterations);
 
@@ -358,17 +359,19 @@ static void runBenchmark(const Options &, Logger &logger)
     {
         std::swap(previousBoard, currentBoard);
         tick(previousBoard, currentBoard);
+        cellCount += currentBoard.size() * 64;
     }
     auto t2 = std::chrono::high_resolution_clock::now();
 
     logger.debug("Last generation tick value is {}.", previousBoard.getGeneration());
 
     std::chrono::duration<double, std::milli> duration = t2 - t1;
-    double throughput = 1000.0 * (double)Iterations / duration.count();
+    double iterationThroughput = 1000.0 * static_cast<double>(Iterations) / duration.count();
+    double updateThroughput = static_cast<double>(cellCount) / (duration.count() * 1000.0);
 
     std::osyncstream stream(std::cout);
-    stream << "Processed " << Iterations << " iterations in " << duration.count() << " ms\n";
-    stream << "Throughput is " << throughput << " iterations per second\n";
+    stream << "Processed " << Iterations << " iterations and " << cellCount << " cells in " << duration.count() << " ms\n";
+    stream << "Throughput is " << iterationThroughput << " iterations per second and " << updateThroughput << " Mcells per second\n";
 }
 
 static void runWindow(const Options &, Logger &logger)
