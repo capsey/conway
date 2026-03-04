@@ -1,4 +1,3 @@
-**/*.o
-**/*.d
+build/
 conway
 compile_commands.json

@@ -2,8 +2,15 @@
 
 #include "logger.hpp"
 
-#include <SFML/Graphics.hpp>
+#include <SFML/Graphics/Color.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/View.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <SFML/Window/Event.hpp>
 #include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 class Window
 {
@@ -40,7 +47,7 @@ protected:
     virtual void draw() = 0;
 
 public:
-    Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background);
+    Window(Logger &logger, unsigned int width, unsigned int height, const std::string &title, sf::Color background);
     Window(const Window &) = delete;
     Window &operator=(const Window &) = delete;
     virtual ~Window() = default;

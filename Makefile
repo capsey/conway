@@ -1,10 +1,14 @@
 BUILD ?= release
 
+SRCDIR := src
+INCDIR := include
+BLDDIR := build
+OBJDIR := $(BLDDIR)/$(BUILD)
 BINARY := conway
 
-SRCS := $(wildcard *.cpp)
-OBJS := $(SRCS:.cpp=.o)
-DEPS := $(SRCS:.cpp=.d)
+SRCS := $(wildcard $(SRCDIR)/*.cpp)
+OBJS := $(SRCS:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+DEPS := $(SRCS:$(SRCDIR)/%.cpp=$(OBJDIR)/%.d)
 
 CXX := g++
 CXXFLAGS.debug = -g3 -Og -DDEBUG -fsanitize=address,undefined -fno-omit-frame-pointer
@@ -15,17 +19,29 @@ LDFLAGS.release =
 LDFLAGS := $(LDFLAGS.$(BUILD))
 LDLIBS := -lsfml-graphics -lsfml-window -lsfml-system
 
-.PHONY: clean
+.PHONY: all clean compiledb $(BINARY)
 
 all: $(BINARY)
 
 clean:
-	$(RM) $(OBJS) $(DEPS) $(BINARY)
+	$(RM) -r $(BLDDIR) $(BINARY)
 
-$(BINARY): $(OBJS)
+check:
+	run-clang-tidy $(SRCS)
+
+compiledb: clean
+	bear -- $(MAKE) BUILD=debug -j
+
+$(BINARY): $(OBJDIR)/$(BINARY)
+	ln -sf $< $@
+
+$(OBJDIR)/$(BINARY): $(OBJS)
 	$(CXX) $(LDFLAGS) $^ $(LDLIBS) -o $@
 
--include $(DEPS)
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) -I$(INCDIR) -c $< -o $@
 
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+-include $(DEPS)

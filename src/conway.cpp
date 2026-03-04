@@ -1,27 +1,40 @@
 #include "conway.hpp"
+#include "logger.hpp"
 
-#include <boost/unordered_set.hpp>
-#include <iostream>
+#include <SFML/Graphics/Rect.hpp>
+#include <SFML/Graphics/RenderStates.hpp>
+#include <SFML/Graphics/RenderTarget.hpp>
+#include <SFML/Graphics/Sprite.hpp>
+#include <SFML/Graphics/Texture.hpp>
+#include <SFML/Graphics/Transform.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <boost/unordered/unordered_set.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <stdexcept>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-constexpr static std::pair<Chunk, Chunk> halfAdder(Chunk a, Chunk b)
+[[nodiscard]] constexpr static std::pair<Chunk, Chunk> halfAdder(Chunk a, Chunk b)
 {
     return {a ^ b, a & b};
 }
 
-constexpr static std::pair<Chunk, Chunk> fullAdder(Chunk a, Chunk b, Chunk c)
+[[nodiscard]] constexpr static std::pair<Chunk, Chunk> fullAdder(Chunk a, Chunk b, Chunk c)
 {
     Chunk s = a ^ b;
     return {s ^ c, (a & b) | (s & c)};
 }
 
-constexpr static std::tuple<Chunk, Chunk, Chunk> adder2(Chunk a0, Chunk a1, Chunk b0, Chunk b1)
+[[nodiscard]] constexpr static std::tuple<Chunk, Chunk, Chunk> adder2(Chunk a0, Chunk a1, Chunk b0, Chunk b1)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
     return {s0, s1, c1};
 }
 
-constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, Chunk a2, Chunk b0, Chunk b1, Chunk b2)
+[[nodiscard]] constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a1, Chunk a2, Chunk b0, Chunk b1, Chunk b2)
 {
     auto [s0, c0] = halfAdder(a0, b0);
     auto [s1, c1] = fullAdder(a1, b1, c0);
@@ -29,7 +42,7 @@ constexpr static std::tuple<Chunk, Chunk, Chunk, Chunk> adder3(Chunk a0, Chunk a
     return {s0, s1, s2, c2};
 }
 
-inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> &potentialChunks)
+[[nodiscard]] inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, boost::unordered_set<sf::Vector2i> &potentialChunks)
 {
     Chunk x0 = it->node.chunk.shiftRight(); // left neighbor
     Chunk x1 = it->node.chunk.shiftLeft();  // right neighbor
@@ -123,7 +136,7 @@ inline static Chunk process(const BitBoard &board, BitBoard::const_iterator it, 
     return r1 & ~r2 & (r0 | it->node.chunk);
 }
 
-inline static Chunk process(const BitBoard &board, sf::Vector2i pos)
+[[nodiscard]] inline static Chunk process(const BitBoard &board, sf::Vector2i pos)
 {
     Chunk x0; // left neighbor
     Chunk x1; // right neighbor
@@ -211,23 +224,23 @@ void tick(const BitBoard &previous, BitBoard &current)
         if (auto chunk = process(previous, it, potentialChunks))
             current.set(it->meta.pos, chunk);
 
-    for (auto &pos : potentialChunks)
+    for (auto pos : potentialChunks)
         if (auto chunk = process(previous, pos))
             current.set(pos, chunk);
 }
 
-static sf::Texture _texture;
-const sf::Texture &ChunkRenderer::m_texture(_texture);
+static sf::Texture texture;
+const sf::Texture &ChunkRenderer::m_texture = texture;
 
 void ChunkRenderer::initializeSprites(Logger &logger)
 {
-    if (!_texture.resize(sf::Vector2u(8, 256)))
+    if (!texture.resize(sf::Vector2u(8, 256)))
         throw std::runtime_error("Failed to resize the texture.");
 
-    auto [width, height] = _texture.getSize();
+    auto [width, height] = texture.getSize();
     logger.debug("Texture resized successfully to {}x{}.", width, height);
 
-    std::vector<std::uint8_t> pixels(width * height * 4);
+    std::vector<std::uint8_t> pixels(static_cast<size_t>(width * height * 4));
     logger.debug("Allocated pixel buffer with {} bytes.", pixels.size());
 
     for (unsigned int i = 0; i < height; i++)
@@ -237,7 +250,7 @@ void ChunkRenderer::initializeSprites(Logger &logger)
         for (unsigned int j = 0; j < width; j++)
         {
             const uint8_t value = (n & 1) ? 255 : 0;
-            const size_t index = (i * width + j) * 4;
+            const size_t index = static_cast<size_t>((i * width) + j) * 4;
 
             pixels[index + 0] = value;
             pixels[index + 1] = value;
@@ -248,7 +261,7 @@ void ChunkRenderer::initializeSprites(Logger &logger)
         }
     }
 
-    _texture.update(pixels.data());
+    texture.update(pixels.data());
     logger.info("Sprite texture initialization completed successfully.");
 }
 
@@ -258,7 +271,7 @@ void ChunkRenderer::draw(sf::RenderTarget &target, sf::RenderStates states) cons
 
     for (int i = 0; i < 8; i++)
     {
-        sf::Sprite sprite(_texture, sf::IntRect({0, int((m_data.data() >> (8 * i)) % 256)}, {8, 1}));
+        sf::Sprite sprite(texture, sf::IntRect({0, static_cast<int>((m_data.data() >> (8 * i)) % 256)}, {8, 1}));
         sprite.setColor(m_color);
         target.draw(sprite, states);
 

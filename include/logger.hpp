@@ -7,14 +7,15 @@
 #include <syncstream>
 #include <thread>
 
-enum class LogLevel
+enum class LogLevel : uint8_t
 {
     Debug = 0,
     Info,
+    Warning,
     Error,
 };
 
-inline static std::string_view levelString(LogLevel level)
+constexpr static std::string_view levelString(LogLevel level)
 {
     switch (level)
     {
@@ -23,6 +24,9 @@ inline static std::string_view levelString(LogLevel level)
 
     case LogLevel::Info:
         return "INFO";
+
+    case LogLevel::Warning:
+        return "WARNING";
 
     case LogLevel::Error:
         return "ERROR";
@@ -75,18 +79,23 @@ private:
 public:
     Logger(LogLevel level, std::ostream &out) : m_level(level), m_out(out) {}
 
-    inline void debug(std::string_view message) { log(LogLevel::Debug, message); }
+    void debug(std::string_view message) { log(LogLevel::Debug, message); }
 
     template <typename... Args>
-    inline void debug(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Debug, fmt, std::forward<Args>(args)...); }
+    void debug(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Debug, fmt, std::forward<Args>(args)...); }
 
-    inline void info(std::string_view message) { log(LogLevel::Info, message); }
-
-    template <typename... Args>
-    inline void info(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Info, fmt, std::forward<Args>(args)...); }
-
-    inline void error(std::string_view message) { log(LogLevel::Error, message); }
+    void info(std::string_view message) { log(LogLevel::Info, message); }
 
     template <typename... Args>
-    inline void error(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Error, fmt, std::forward<Args>(args)...); }
+    void info(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Info, fmt, std::forward<Args>(args)...); }
+
+    void warn(std::string_view message) { log(LogLevel::Warning, message); }
+
+    template <typename... Args>
+    void warn(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Warning, fmt, std::forward<Args>(args)...); }
+
+    void error(std::string_view message) { log(LogLevel::Error, message); }
+
+    template <typename... Args>
+    void error(std::format_string<Args...> fmt, Args &&...args) { log(LogLevel::Error, fmt, std::forward<Args>(args)...); }
 };

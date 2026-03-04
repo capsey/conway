@@ -1,105 +1,27 @@
 #include "main.hpp"
+#include "conway.hpp"
 #include "logger.hpp"
+#include "options.hpp"
 #include "utility.hpp"
 
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <SFML/Window/Event.hpp>
+#include <SFML/Window/Keyboard.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <chrono>
+#include <cstddef>
 #include <iostream>
+#include <ratio>
+#include <string>
 #include <syncstream>
-
-Options::Options(int argc, char *argv[]) : m_executable(argv[0])
-{
-    bool readingOptions = true;
-
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string arg = argv[i];
-        if (arg.empty())
-            continue;
-
-        if (readingOptions && arg[0] == '-')
-        {
-            if (arg == "--")
-            {
-                readingOptions = false;
-                continue;
-            }
-
-            if (arg == "-h" || arg == "--help")
-            {
-                help = true;
-                continue;
-            }
-
-            if (arg == "-v" || arg == "--version")
-            {
-                version = true;
-                continue;
-            }
-
-            if (arg == "--info")
-            {
-                info = true;
-                continue;
-            }
-
-            if (arg == "--debug")
-            {
-                debug = true;
-                continue;
-            }
-
-            if (arg == "--benchmark")
-            {
-                benchmark = true;
-                continue;
-            }
-
-            throw Error("Unknown option '" + arg + "'.", m_executable);
-        }
-    }
-}
-
-void Options::printHelp()
-{
-    std::osyncstream stream(std::cerr);
-    stream << "Usage: " << m_executable << " [OPTIONS]\n";
-    stream << "\n";
-    stream << "Conway's Game of Life.\n";
-    stream << "\n";
-    stream << "Options:\n";
-    stream << "  -h, --help       Show this help message and exit\n";
-    stream << "  -v, --version    Show version and exit\n";
-    stream << "  --info           Show more logging information\n";
-    stream << "  --debug          Show debugging information\n";
-    stream << "  --               Stop parsing options (treat following arguments as filename)\n";
-}
-
-void Options::printVersion()
-{
-    std::osyncstream stream(std::cout);
-    stream << "conway " << CONWAY_VERSION_STRING << "\n";
-    stream << "sfml " << SFML_VERSION_MAJOR << "." << SFML_VERSION_MINOR << "." << SFML_VERSION_PATCH << "\n";
-}
-
-LogLevel Options::getLogLevel()
-{
-    LogLevel level = LogLevel::Error;
-
-    if (info)
-        level = LogLevel::Info;
-
-    if (debug)
-        level = LogLevel::Debug;
-
-    return level;
-}
 
 std::shared_ptr<BitBoard> Simulation::acquire()
 {
     BitBoard *object = nullptr;
 
     {
-        std::lock_guard lock(m_poolMutex);
+        std::scoped_lock lock(m_poolMutex);
 
         if (!m_pool.empty())
         {
@@ -113,26 +35,26 @@ std::shared_ptr<BitBoard> Simulation::acquire()
 
     std::weak_ptr<Simulation> weakSimulation = shared_from_this();
 
-    return std::shared_ptr<BitBoard>(object, [weakSimulation](BitBoard *object)
+    return {object, [weakSimulation](BitBoard *object)
     {
         if (auto simulation = weakSimulation.lock())
         {
-            std::lock_guard lock(simulation->m_poolMutex);
+            std::scoped_lock lock(simulation->m_poolMutex);
             simulation->m_pool.push_back(object);
         }
         else
         {
             delete object;
         }
-    });
+    }};
 }
 
 void Simulation::clear()
 {
-    std::lock_guard lock(m_poolMutex);
+    std::scoped_lock lock(m_poolMutex);
 
-    for (size_t i = 0; i < m_pool.size(); i++)
-        delete m_pool[i];
+    for (auto *object : m_pool)
+        delete object;
 
     m_pool.clear();
 }
@@ -174,14 +96,15 @@ void Simulation::tickingThread()
     catch (const std::exception &e)
     {
         logger.error(e.what());
-        std::lock_guard lock(m_exceptionMutex);
+
+        std::scoped_lock lock(m_exceptionMutex);
         m_exception = std::current_exception();
     }
 }
 
-void Simulation::pushTask(std::function<std::shared_ptr<const BitBoard>()> task)
+void Simulation::pushTask(const std::function<std::shared_ptr<const BitBoard>()> &task)
 {
-    std::lock_guard lock(m_tickingMutex);
+    std::scoped_lock lock(m_tickingMutex);
     m_taskQueue.emplace(task);
     m_tickingCondition.notify_all();
 }
@@ -200,7 +123,7 @@ void Simulation::start()
 bool Simulation::togglePause()
 {
     logger.debug("Toggling pause state of the simulation.");
-    std::lock_guard lock(m_tickingMutex);
+    std::scoped_lock lock(m_tickingMutex);
     m_paused = !m_paused;
     m_tickingCondition.notify_all();
     return m_paused;
@@ -239,7 +162,7 @@ void Simulation::scheduleClear()
 void Simulation::stop()
 {
     {
-        std::lock_guard lock(m_tickingMutex);
+        std::scoped_lock lock(m_tickingMutex);
         m_running = false;
         m_tickingCondition.notify_all();
     }
@@ -407,17 +330,20 @@ int main(int argc, char *argv[])
             runBenchmark(options, logger);
             return 0;
         }
-        else
-        {
-            runWindow(options, logger);
-            return 0;
-        }
+
+        runWindow(options, logger);
+        return 0;
     }
     catch (const Options::Error &error)
     {
         std::osyncstream stream(std::cerr);
         stream << "Error: " << error.what() << '\n';
         stream << "Use '" << error.executable() << " --help' for usage information.\n";
+        return 1;
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Fatal error: " << e.what() << '\n';
         return 1;
     }
 }

@@ -1,9 +1,14 @@
 #include "window.hpp"
+#include "logger.hpp"
 
+#include <SFML/Window/Event.hpp>
+#include <SFML/Window/Mouse.hpp>
+#include <SFML/Window/VideoMode.hpp>
 #include <algorithm>
 #include <cmath>
+#include <exception>
 
-Window::Window(Logger &logger, unsigned int width, unsigned int height, std::string title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), size(width, height), view({0.0F, 0.0F}, {static_cast<float>(width), static_cast<float>(height)}), background(background)
+Window::Window(Logger &logger, unsigned int width, unsigned int height, const std::string &title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), size(width, height), view({0.0F, 0.0F}, {static_cast<float>(width), static_cast<float>(height)}), background(background)
 {
     window.setVerticalSyncEnabled(true);
 
@@ -57,7 +62,7 @@ void Window::run()
 
         while (window.isOpen())
         {
-            while (const std::optional event = window.pollEvent())
+            while (auto event = window.pollEvent())
                 for (auto &handler : m_handlers)
                     handler(*event);
 

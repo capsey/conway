@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/conway",
+            "program": "${workspaceFolder}/build/debug/conway",
             "args": [
                 "--debug"
             ],

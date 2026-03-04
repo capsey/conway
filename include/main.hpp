@@ -1,53 +1,19 @@
 #pragma once
 
-#include "conway.hpp"
+#include "bitboard.hpp"
+#include "logger.hpp"
 #include "window.hpp"
 
+#include <SFML/Graphics/Color.hpp>
 #include <condition_variable>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <queue>
 #include <thread>
-
-#define CONWAY_VERSION_STRING "1.0.0"
-
-class Options
-{
-private:
-    std::string m_executable;
-
-public:
-    bool help = false;
-    bool version = false;
-    bool info = false;
-    bool debug = false;
-    bool benchmark = false;
-
-    Options(int argc, char *argv[]);
-
-    void printHelp();
-    void printVersion();
-
-    LogLevel getLogLevel();
-
-    class Error : public std::exception
-    {
-    private:
-        std::string m_message;
-        std::string m_executable;
-
-    public:
-        Error(std::string message, std::string executable) : m_message(std::move(message)), m_executable(std::move(executable)) {}
-
-        const char *what() const noexcept override
-        {
-            return m_message.c_str();
-        }
-
-        const std::string &executable() const noexcept
-        {
-            return m_executable;
-        }
-    };
-};
+#include <utility>
+#include <vector>
 
 class Simulation : public std::enable_shared_from_this<Simulation>
 {
@@ -68,11 +34,11 @@ private:
     std::exception_ptr m_exception;
     std::mutex m_exceptionMutex;
 
-    std::shared_ptr<BitBoard> acquire();
+    [[nodiscard]] std::shared_ptr<BitBoard> acquire();
     void clear();
 
     void tickingThread();
-    void pushTask(std::function<std::shared_ptr<const BitBoard>()> task);
+    void pushTask(const std::function<std::shared_ptr<const BitBoard>()> &task);
 
 protected:
     Logger &logger;
@@ -89,14 +55,14 @@ public:
     void scheduleClear();
     void stop();
 
-    std::shared_ptr<const BitBoard> snapshot()
+    [[nodiscard]] std::shared_ptr<const BitBoard> snapshot()
     {
         return m_data.load();
     }
 
-    std::exception_ptr exception()
+    [[nodiscard]] std::exception_ptr exception()
     {
-        std::lock_guard lock(m_exceptionMutex);
+        std::scoped_lock lock(m_exceptionMutex);
         return m_exception;
     }
 };

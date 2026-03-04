@@ -1,13 +1,9 @@
 #pragma once
 
-#include "logger.hpp"
 #include "utility.hpp"
 
 #include <SFML/Graphics.hpp>
-#include <atomic>
 #include <boost/unordered/unordered_flat_map.hpp>
-#include <functional>
-#include <memory>
 
 namespace boost
 {
@@ -31,7 +27,7 @@ public:
     constexpr Chunk() : m_data(0) {}
     explicit constexpr Chunk(uint64_t data) : m_data(data) {}
 
-    constexpr uint64_t data() const
+    [[nodiscard]] constexpr uint64_t data() const
     {
         return m_data;
     }
@@ -45,19 +41,19 @@ public:
         return *this;
     }
 
-    constexpr bool get(sf::Vector2i pos) const
+    [[nodiscard]] constexpr bool get(sf::Vector2i pos) const
     {
         int i = (pos.y * 8) + pos.x;
         assert(i >= 0 && i < 64);
         return (m_data >> i) & 1;
     }
 
-    constexpr Chunk shiftLeft() const
+    [[nodiscard]] constexpr Chunk shiftLeft() const
     {
         return Chunk((m_data >> 1) & 0x7F7F7F7F7F7F7F7FULL);
     }
 
-    constexpr Chunk shiftLeft(unsigned int n) const
+    [[nodiscard]] constexpr Chunk shiftLeft(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -67,12 +63,12 @@ public:
         return result;
     }
 
-    constexpr Chunk shiftRight() const
+    [[nodiscard]] constexpr Chunk shiftRight() const
     {
         return Chunk((m_data << 1) & 0xFEFEFEFEFEFEFEFEULL);
     }
 
-    constexpr Chunk shiftRight(unsigned int n) const
+    [[nodiscard]] constexpr Chunk shiftRight(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -82,12 +78,12 @@ public:
         return result;
     }
 
-    constexpr Chunk shiftUp() const
+    [[nodiscard]] constexpr Chunk shiftUp() const
     {
         return Chunk(m_data >> 8);
     }
 
-    constexpr Chunk shiftUp(unsigned int n) const
+    [[nodiscard]] constexpr Chunk shiftUp(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -97,12 +93,12 @@ public:
         return result;
     }
 
-    constexpr Chunk shiftDown() const
+    [[nodiscard]] constexpr Chunk shiftDown() const
     {
         return Chunk(m_data << 8);
     }
 
-    constexpr Chunk shiftDown(unsigned int n) const
+    [[nodiscard]] constexpr Chunk shiftDown(unsigned int n) const
     {
         Chunk result = *this;
 
@@ -146,30 +142,30 @@ public:
         return *this;
     }
 
-    constexpr Chunk operator~() const
+    [[nodiscard]] constexpr Chunk operator~() const
     {
         return Chunk(~m_data);
     }
 
-    constexpr friend Chunk operator|(Chunk lhs, const Chunk &rhs)
+    [[nodiscard]] constexpr friend Chunk operator|(Chunk lhs, const Chunk &rhs)
     {
         lhs |= rhs;
         return lhs;
     }
 
-    constexpr friend Chunk operator&(Chunk lhs, const Chunk &rhs)
+    [[nodiscard]] constexpr friend Chunk operator&(Chunk lhs, const Chunk &rhs)
     {
         lhs &= rhs;
         return lhs;
     }
 
-    constexpr friend Chunk operator^(Chunk lhs, const Chunk &rhs)
+    [[nodiscard]] constexpr friend Chunk operator^(Chunk lhs, const Chunk &rhs)
     {
         lhs ^= rhs;
         return lhs;
     }
 
-    constexpr friend Chunk operator-(Chunk lhs, const Chunk &rhs)
+    [[nodiscard]] constexpr friend Chunk operator-(Chunk lhs, const Chunk &rhs)
     {
         lhs -= rhs;
         return lhs;
@@ -301,7 +297,7 @@ private:
     size_t m_firstReusable;
     size_t m_size;
 
-    inline size_t allocate(Chunk chunk, sf::Vector2i pos)
+    size_t allocate(Chunk chunk, sf::Vector2i pos)
     {
         size_t index;
 
@@ -330,12 +326,11 @@ private:
         return index;
     }
 
-    inline void connect(size_t index, sf::Vector2i pos)
+    void connect(size_t index, sf::Vector2i pos)
     {
         Meta &meta = m_metas[index];
         meta = Meta(pos);
 
-        boost::unordered_flat_map<sf::Vector2i, size_t>::iterator entry;
         bool n = false;
         bool s = false;
         bool w = false;
@@ -345,266 +340,290 @@ private:
         bool sw = false;
         bool se = false;
 
-        if (!n && (entry = m_map.find(pos + sf::Vector2i(0, -1))) != m_map.end())
+        if (!n)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.n = entry->second;
-            otherMeta.s = index;
-
-            if (!nw)
+            if (auto entry = m_map.find(pos + sf::Vector2i(0, -1)); entry != m_map.end())
             {
-                meta.nw = otherMeta.w;
-                if (otherMeta.w != Invalid)
-                    m_metas[otherMeta.w].se = index;
-                nw = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!ne)
-            {
-                meta.ne = otherMeta.e;
-                if (otherMeta.e != Invalid)
-                    m_metas[otherMeta.e].sw = index;
-                ne = true;
-            }
+                meta.n = entry->second;
+                otherMeta.s = index;
 
-            if (!w)
-            {
-                meta.w = otherMeta.sw;
-                if (otherMeta.sw != Invalid)
-                    m_metas[otherMeta.sw].e = index;
-                w = true;
-            }
+                if (!nw)
+                {
+                    meta.nw = otherMeta.w;
+                    if (otherMeta.w != Invalid)
+                        m_metas[otherMeta.w].se = index;
+                    nw = true;
+                }
 
-            if (!e)
-            {
-                meta.e = otherMeta.se;
-                if (otherMeta.se != Invalid)
-                    m_metas[otherMeta.se].w = index;
-                e = true;
+                if (!ne)
+                {
+                    meta.ne = otherMeta.e;
+                    if (otherMeta.e != Invalid)
+                        m_metas[otherMeta.e].sw = index;
+                    ne = true;
+                }
+
+                if (!w)
+                {
+                    meta.w = otherMeta.sw;
+                    if (otherMeta.sw != Invalid)
+                        m_metas[otherMeta.sw].e = index;
+                    w = true;
+                }
+
+                if (!e)
+                {
+                    meta.e = otherMeta.se;
+                    if (otherMeta.se != Invalid)
+                        m_metas[otherMeta.se].w = index;
+                    e = true;
+                }
             }
         }
 
-        if (!s && (entry = m_map.find(pos + sf::Vector2i(0, 1))) != m_map.end())
+        if (!s)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.s = entry->second;
-            otherMeta.n = index;
-
-            if (!sw)
+            if (auto entry = m_map.find(pos + sf::Vector2i(0, 1)); entry != m_map.end())
             {
-                meta.sw = otherMeta.w;
-                if (otherMeta.w != Invalid)
-                    m_metas[otherMeta.w].ne = index;
-                sw = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!se)
-            {
-                meta.se = otherMeta.e;
-                if (otherMeta.e != Invalid)
-                    m_metas[otherMeta.e].nw = index;
-                se = true;
-            }
+                meta.s = entry->second;
+                otherMeta.n = index;
 
-            if (!w)
-            {
-                meta.w = otherMeta.nw;
-                if (otherMeta.nw != Invalid)
-                    m_metas[otherMeta.nw].e = index;
-                w = true;
-            }
+                if (!sw)
+                {
+                    meta.sw = otherMeta.w;
+                    if (otherMeta.w != Invalid)
+                        m_metas[otherMeta.w].ne = index;
+                    sw = true;
+                }
 
-            if (!e)
-            {
-                meta.e = otherMeta.ne;
-                if (otherMeta.ne != Invalid)
-                    m_metas[otherMeta.ne].w = index;
-                e = true;
+                if (!se)
+                {
+                    meta.se = otherMeta.e;
+                    if (otherMeta.e != Invalid)
+                        m_metas[otherMeta.e].nw = index;
+                    se = true;
+                }
+
+                if (!w)
+                {
+                    meta.w = otherMeta.nw;
+                    if (otherMeta.nw != Invalid)
+                        m_metas[otherMeta.nw].e = index;
+                    w = true;
+                }
+
+                if (!e)
+                {
+                    meta.e = otherMeta.ne;
+                    if (otherMeta.ne != Invalid)
+                        m_metas[otherMeta.ne].w = index;
+                    e = true;
+                }
             }
         }
 
-        if (!w && (entry = m_map.find(pos + sf::Vector2i(-1, 0))) != m_map.end())
+        if (!w)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.w = entry->second;
-            otherMeta.e = index;
-
-            if (!nw)
+            if (auto entry = m_map.find(pos + sf::Vector2i(-1, 0)); entry != m_map.end())
             {
-                meta.nw = otherMeta.n;
-                if (otherMeta.n != Invalid)
-                    m_metas[otherMeta.n].se = index;
-                nw = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!sw)
-            {
-                meta.sw = otherMeta.s;
-                if (otherMeta.s != Invalid)
-                    m_metas[otherMeta.s].ne = index;
-                sw = true;
-            }
+                meta.w = entry->second;
+                otherMeta.e = index;
 
-            if (!n)
-            {
-                meta.n = otherMeta.ne;
-                if (otherMeta.ne != Invalid)
-                    m_metas[otherMeta.ne].s = index;
-                n = true;
-            }
+                if (!nw)
+                {
+                    meta.nw = otherMeta.n;
+                    if (otherMeta.n != Invalid)
+                        m_metas[otherMeta.n].se = index;
+                    nw = true;
+                }
 
-            if (!s)
-            {
-                meta.s = otherMeta.se;
-                if (otherMeta.se != Invalid)
-                    m_metas[otherMeta.se].n = index;
-                s = true;
+                if (!sw)
+                {
+                    meta.sw = otherMeta.s;
+                    if (otherMeta.s != Invalid)
+                        m_metas[otherMeta.s].ne = index;
+                    sw = true;
+                }
+
+                if (!n)
+                {
+                    meta.n = otherMeta.ne;
+                    if (otherMeta.ne != Invalid)
+                        m_metas[otherMeta.ne].s = index;
+                    n = true;
+                }
+
+                if (!s)
+                {
+                    meta.s = otherMeta.se;
+                    if (otherMeta.se != Invalid)
+                        m_metas[otherMeta.se].n = index;
+                    s = true;
+                }
             }
         }
 
-        if (!e && (entry = m_map.find(pos + sf::Vector2i(1, 0))) != m_map.end())
+        if (!e)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.e = entry->second;
-            otherMeta.w = index;
-
-            if (!ne)
+            if (auto entry = m_map.find(pos + sf::Vector2i(1, 0)); entry != m_map.end())
             {
-                meta.ne = otherMeta.n;
-                if (otherMeta.n != Invalid)
-                    m_metas[otherMeta.n].sw = index;
-                ne = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!se)
-            {
-                meta.se = otherMeta.s;
-                if (otherMeta.s != Invalid)
-                    m_metas[otherMeta.s].nw = index;
-                se = true;
-            }
+                meta.e = entry->second;
+                otherMeta.w = index;
 
-            if (!n)
-            {
-                meta.n = otherMeta.nw;
-                if (otherMeta.nw != Invalid)
-                    m_metas[otherMeta.nw].s = index;
-                n = true;
-            }
+                if (!ne)
+                {
+                    meta.ne = otherMeta.n;
+                    if (otherMeta.n != Invalid)
+                        m_metas[otherMeta.n].sw = index;
+                    ne = true;
+                }
 
-            if (!s)
-            {
-                meta.s = otherMeta.sw;
-                if (otherMeta.sw != Invalid)
-                    m_metas[otherMeta.sw].n = index;
-                s = true;
+                if (!se)
+                {
+                    meta.se = otherMeta.s;
+                    if (otherMeta.s != Invalid)
+                        m_metas[otherMeta.s].nw = index;
+                    se = true;
+                }
+
+                if (!n)
+                {
+                    meta.n = otherMeta.nw;
+                    if (otherMeta.nw != Invalid)
+                        m_metas[otherMeta.nw].s = index;
+                    n = true;
+                }
+
+                if (!s)
+                {
+                    meta.s = otherMeta.sw;
+                    if (otherMeta.sw != Invalid)
+                        m_metas[otherMeta.sw].n = index;
+                    s = true;
+                }
             }
         }
 
-        if (!nw && (entry = m_map.find(pos + sf::Vector2i(-1, -1))) != m_map.end())
+        if (!nw)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.nw = entry->second;
-            otherMeta.se = index;
-
-            if (!n)
+            if (auto entry = m_map.find(pos + sf::Vector2i(-1, -1)); entry != m_map.end())
             {
-                meta.n = otherMeta.e;
-                if (otherMeta.e != Invalid)
-                    m_metas[otherMeta.e].s = index;
-                n = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!w)
-            {
-                meta.w = otherMeta.s;
-                if (otherMeta.s != Invalid)
-                    m_metas[otherMeta.s].e = index;
-                w = true;
+                meta.nw = entry->second;
+                otherMeta.se = index;
+
+                if (!n)
+                {
+                    meta.n = otherMeta.e;
+                    if (otherMeta.e != Invalid)
+                        m_metas[otherMeta.e].s = index;
+                    n = true;
+                }
+
+                if (!w)
+                {
+                    meta.w = otherMeta.s;
+                    if (otherMeta.s != Invalid)
+                        m_metas[otherMeta.s].e = index;
+                    w = true;
+                }
             }
         }
 
-        if (!ne && (entry = m_map.find(pos + sf::Vector2i(1, -1))) != m_map.end())
+        if (!ne)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.ne = entry->second;
-            otherMeta.sw = index;
-
-            if (!n)
+            if (auto entry = m_map.find(pos + sf::Vector2i(1, -1)); entry != m_map.end())
             {
-                meta.n = otherMeta.w;
-                if (otherMeta.w != Invalid)
-                    m_metas[otherMeta.w].s = index;
-                n = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!e)
-            {
-                meta.e = otherMeta.s;
-                if (otherMeta.s != Invalid)
-                    m_metas[otherMeta.s].w = index;
-                e = true;
+                meta.ne = entry->second;
+                otherMeta.sw = index;
+
+                if (!n)
+                {
+                    meta.n = otherMeta.w;
+                    if (otherMeta.w != Invalid)
+                        m_metas[otherMeta.w].s = index;
+                    n = true;
+                }
+
+                if (!e)
+                {
+                    meta.e = otherMeta.s;
+                    if (otherMeta.s != Invalid)
+                        m_metas[otherMeta.s].w = index;
+                    e = true;
+                }
             }
         }
 
-        if (!sw && (entry = m_map.find(pos + sf::Vector2i(-1, 1))) != m_map.end())
+        if (!sw)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.sw = entry->second;
-            otherMeta.ne = index;
-
-            if (!s)
+            if (auto entry = m_map.find(pos + sf::Vector2i(-1, 1)); entry != m_map.end())
             {
-                meta.s = otherMeta.e;
-                if (otherMeta.e != Invalid)
-                    m_metas[otherMeta.e].n = index;
-                s = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!w)
-            {
-                meta.w = otherMeta.n;
-                if (otherMeta.n != Invalid)
-                    m_metas[otherMeta.n].e = index;
-                w = true;
+                meta.sw = entry->second;
+                otherMeta.ne = index;
+
+                if (!s)
+                {
+                    meta.s = otherMeta.e;
+                    if (otherMeta.e != Invalid)
+                        m_metas[otherMeta.e].n = index;
+                    s = true;
+                }
+
+                if (!w)
+                {
+                    meta.w = otherMeta.n;
+                    if (otherMeta.n != Invalid)
+                        m_metas[otherMeta.n].e = index;
+                    w = true;
+                }
             }
         }
 
-        if (!se && (entry = m_map.find(pos + sf::Vector2i(1, 1))) != m_map.end())
+        if (!se)
         {
-            Meta &otherMeta = m_metas[entry->second];
-
-            meta.se = entry->second;
-            otherMeta.nw = index;
-
-            if (!s)
+            if (auto entry = m_map.find(pos + sf::Vector2i(1, 1)); entry != m_map.end())
             {
-                meta.s = otherMeta.w;
-                if (otherMeta.w != Invalid)
-                    m_metas[otherMeta.w].n = index;
-                s = true;
-            }
+                Meta &otherMeta = m_metas[entry->second];
 
-            if (!e)
-            {
-                meta.e = otherMeta.n;
-                if (otherMeta.n != Invalid)
-                    m_metas[otherMeta.n].w = index;
-                e = true;
+                meta.se = entry->second;
+                otherMeta.nw = index;
+
+                if (!s)
+                {
+                    meta.s = otherMeta.w;
+                    if (otherMeta.w != Invalid)
+                        m_metas[otherMeta.w].n = index;
+                    s = true;
+                }
+
+                if (!e)
+                {
+                    meta.e = otherMeta.n;
+                    if (otherMeta.n != Invalid)
+                        m_metas[otherMeta.n].w = index;
+                    e = true;
+                }
             }
         }
 
         m_map[pos] = index;
     }
 
-    inline void disconnect(size_t index)
+    void disconnect(size_t index)
     {
         Meta &meta = m_metas[index];
 
@@ -639,10 +658,10 @@ public:
     using iterator = Iterator<Node, Meta>;
     using const_iterator = Iterator<const Node, const Meta>;
 
-    inline BitBoard() : m_nodes(), m_metas(), m_map(), m_generation(0), m_firstReusable(0), m_size(0) {}
-    inline BitBoard(unsigned int generation) : m_nodes(), m_metas(), m_map(), m_generation(generation), m_firstReusable(0), m_size(0) {}
+    BitBoard() : m_generation(0), m_firstReusable(0), m_size(0) {}
+    BitBoard(unsigned int generation) : m_generation(generation), m_firstReusable(0), m_size(0) {}
 
-    inline BitBoard &set(sf::Vector2i pos, bool state)
+    BitBoard &set(sf::Vector2i pos, bool state)
     {
         sf::Vector2i chunkPos = utility::floorDiv(pos, {8, 8});
         sf::Vector2i localPos = pos - (chunkPos * 8);
@@ -671,7 +690,7 @@ public:
         return *this;
     }
 
-    inline bool get(sf::Vector2i pos) const
+    [[nodiscard]] bool get(sf::Vector2i pos) const
     {
         sf::Vector2i chunkPos = utility::floorDiv(pos, {8, 8});
         sf::Vector2i localPos = pos - (chunkPos * 8);
@@ -682,53 +701,53 @@ public:
         return false;
     }
 
-    constexpr iterator begin()
+    [[nodiscard]] constexpr iterator begin()
     {
-        return iterator(&m_nodes, &m_metas, m_generation, 0);
+        return {&m_nodes, &m_metas, m_generation, 0};
     }
 
-    constexpr const_iterator begin() const
+    [[nodiscard]] constexpr const_iterator begin() const
     {
-        return const_iterator(&m_nodes, &m_metas, m_generation, 0);
+        return {&m_nodes, &m_metas, m_generation, 0};
     }
 
-    constexpr iterator end()
+    [[nodiscard]] constexpr iterator end()
     {
-        return iterator(&m_nodes, &m_metas, m_generation, m_nodes.size());
+        return {&m_nodes, &m_metas, m_generation, m_nodes.size()};
     }
 
-    constexpr const_iterator end() const
+    [[nodiscard]] constexpr const_iterator end() const
     {
-        return const_iterator(&m_nodes, &m_metas, m_generation, m_nodes.size());
+        return {&m_nodes, &m_metas, m_generation, m_nodes.size()};
     }
 
-    inline iterator find(sf::Vector2i pos)
-    {
-        if (auto entry = m_map.find(pos); entry != m_map.end())
-        {
-            if (m_nodes[entry->second].generation != m_generation)
-                return end();
-
-            return iterator(&m_nodes, &m_metas, m_generation, entry->second);
-        }
-
-        return end();
-    }
-
-    inline const_iterator find(sf::Vector2i pos) const
+    [[nodiscard]] iterator find(sf::Vector2i pos)
     {
         if (auto entry = m_map.find(pos); entry != m_map.end())
         {
             if (m_nodes[entry->second].generation != m_generation)
                 return end();
 
-            return const_iterator(&m_nodes, &m_metas, m_generation, entry->second);
+            return {&m_nodes, &m_metas, m_generation, entry->second};
         }
 
         return end();
     }
 
-    inline void set(sf::Vector2i pos, Chunk chunk)
+    [[nodiscard]] const_iterator find(sf::Vector2i pos) const
+    {
+        if (auto entry = m_map.find(pos); entry != m_map.end())
+        {
+            if (m_nodes[entry->second].generation != m_generation)
+                return end();
+
+            return {&m_nodes, &m_metas, m_generation, entry->second};
+        }
+
+        return end();
+    }
+
+    void set(sf::Vector2i pos, Chunk chunk)
     {
         if (auto entry = m_map.find(pos); entry != m_map.end())
         {
@@ -746,7 +765,7 @@ public:
         }
     }
 
-    constexpr unsigned int getGeneration() const
+    [[nodiscard]] constexpr unsigned int getGeneration() const
     {
         return m_generation;
     }
@@ -759,7 +778,7 @@ public:
         m_size = 0;
     }
 
-    inline void clear()
+    void clear()
     {
         m_nodes.clear();
         m_metas.clear();
@@ -767,7 +786,7 @@ public:
         setGeneration(0);
     }
 
-    constexpr iterator at(size_t index)
+    [[nodiscard]] constexpr iterator at(size_t index)
     {
         if (index == Invalid)
             return end();
@@ -777,10 +796,10 @@ public:
         if (m_nodes[index].generation != m_generation)
             return end();
 
-        return iterator(&m_nodes, &m_metas, m_generation, index);
+        return {&m_nodes, &m_metas, m_generation, index};
     }
 
-    constexpr const_iterator at(size_t index) const
+    [[nodiscard]] constexpr const_iterator at(size_t index) const
     {
         if (index == Invalid)
             return end();
@@ -790,15 +809,15 @@ public:
         if (m_nodes[index].generation != m_generation)
             return end();
 
-        return const_iterator(&m_nodes, &m_metas, m_generation, index);
+        return {&m_nodes, &m_metas, m_generation, index};
     }
 
-    constexpr size_t size() const
+    [[nodiscard]] constexpr size_t size() const
     {
         return m_size;
     }
 
-    inline BitBoard &operator|=(const BitBoard &other)
+    BitBoard &operator|=(const BitBoard &other)
     {
         for (auto it = other.begin(); it != other.end(); it++)
         {
@@ -822,7 +841,7 @@ public:
         return *this;
     }
 
-    inline BitBoard &operator-=(const BitBoard &other)
+    BitBoard &operator-=(const BitBoard &other)
     {
         for (auto it = other.begin(); it != other.end(); it++)
         {
@@ -841,45 +860,15 @@ public:
         return *this;
     }
 
-    inline friend BitBoard operator|(BitBoard lhs, const BitBoard &rhs)
+    [[nodiscard]] friend BitBoard operator|(BitBoard lhs, const BitBoard &rhs)
     {
         lhs |= rhs;
         return lhs;
     }
 
-    inline friend BitBoard operator-(BitBoard lhs, const BitBoard &rhs)
+    [[nodiscard]] friend BitBoard operator-(BitBoard lhs, const BitBoard &rhs)
     {
         lhs -= rhs;
         return lhs;
     }
-};
-
-void tick(const BitBoard &previous, BitBoard &buffer);
-
-class ChunkRenderer : public sf::Transformable, public sf::Drawable
-{
-private:
-    static const sf::Texture &m_texture;
-
-    Chunk m_data;
-    sf::Color m_color;
-
-public:
-    static void initializeSprites(Logger &logger);
-
-    ChunkRenderer(Chunk data, sf::Color color) : m_data(data), m_color(color) {}
-
-    void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
-};
-
-class BitBoardRenderer : public sf::Transformable, public sf::Drawable
-{
-private:
-    const BitBoard &m_data;
-    sf::Color m_color;
-
-public:
-    BitBoardRenderer(const BitBoard &data, sf::Color color) : m_data(data), m_color(color) {}
-
-    void draw(sf::RenderTarget &target, sf::RenderStates states) const override;
 };
