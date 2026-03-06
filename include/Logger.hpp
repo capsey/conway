@@ -1,9 +1,12 @@
 #pragma once
 
+#include <chrono>
+#include <cstdint>
 #include <format>
-#include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
+#include <string_view>
 #include <syncstream>
 #include <thread>
 
@@ -32,18 +35,18 @@ constexpr static std::string_view levelString(LogLevel level)
         return "ERROR";
 
     default:
-        return "???";
+        throw std::invalid_argument("unknown logging level");
     }
 }
 
 inline static void printHeader(LogLevel level, std::osyncstream &stream)
 {
-    std::time_t time = std::time(nullptr);
-    std::tm tm = *std::localtime(&time);
+    auto now = std::chrono::system_clock::now();
 
-    stream << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "] ";
-    stream << "[" << levelString(level) << "] ";
-    stream << "[" << std::this_thread::get_id() << "] ";
+    stream << '[';
+    std::format_to(std::ostream_iterator<char>(stream), "{:%F %T %Z}", now);
+    stream << "] [" << levelString(level) << "] ";
+    stream << '[' << std::this_thread::get_id() << "] ";
 }
 
 class Logger

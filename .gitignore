@@ -1,3 +1,5 @@
+.cache/
 build/
 conway
 compile_commands.json
+perf.data

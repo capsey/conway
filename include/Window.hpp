@@ -1,6 +1,6 @@
 #pragma once
 
-#include "logger.hpp"
+#include "Logger.hpp"
 
 #include <SFML/Graphics/Color.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
@@ -48,8 +48,12 @@ protected:
 
 public:
     Window(Logger &logger, unsigned int width, unsigned int height, const std::string &title, sf::Color background);
+
     Window(const Window &) = delete;
     Window &operator=(const Window &) = delete;
+    Window(Window &&) = delete;
+    Window &operator=(Window &&) = delete;
+
     virtual ~Window() = default;
 
     void run();

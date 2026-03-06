@@ -1,12 +1,13 @@
 #pragma once
 
-#include "logger.hpp"
+#include "Logger.hpp"
 
 #include <exception>
 #include <string>
+#include <string_view>
 #include <utility>
 
-#define CONWAY_VERSION_STRING "1.0.0"
+constexpr std::string_view CONWAY_VERSION_STRING = "1.0.0";
 
 class Options
 {
@@ -20,6 +21,7 @@ public:
     bool debug = false;
     bool benchmark = false;
 
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, cppcoreguidelines-pro-bounds-pointer-arithmetic, modernize-avoid-c-arrays)
     Options(int argc, char *argv[]);
 
     void printHelp();

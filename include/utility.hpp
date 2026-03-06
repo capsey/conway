@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SFML/Graphics.hpp>
+#include <SFML/System/Vector2.hpp>
 #include <cassert>
 #include <functional>
 
@@ -31,8 +31,8 @@ namespace utility
     // https://dedu.fr/projects/bresenham/
     inline void gridTraversal(sf::Vector2f p1, sf::Vector2f p2, const std::function<void(sf::Vector2i)> &func)
     {
-        int ystep;
-        int xstep;
+        int ystep = 1;
+        int xstep = 1;
         sf::Vector2i d = floor(p2) - floor(p1);
 
         if (d.y < 0)
@@ -40,15 +40,12 @@ namespace utility
             ystep = -1;
             d.y = -d.y;
         }
-        else
-            ystep = 1;
+
         if (d.x < 0)
         {
             xstep = -1;
             d.x = -d.x;
         }
-        else
-            xstep = 1;
 
         sf::Vector2i dd = 2 * d;
         sf::Vector2i p = floor(p1);

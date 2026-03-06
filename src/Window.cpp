@@ -1,12 +1,14 @@
-#include "window.hpp"
-#include "logger.hpp"
+#include "Window.hpp"
+#include "Logger.hpp"
 
+#include <SFML/Graphics/Color.hpp>
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Mouse.hpp>
 #include <SFML/Window/VideoMode.hpp>
 #include <algorithm>
 #include <cmath>
 #include <exception>
+#include <string>
 
 Window::Window(Logger &logger, unsigned int width, unsigned int height, const std::string &title, sf::Color background) : logger(logger), window(sf::VideoMode({width, height}), title), size(width, height), view({0.0F, 0.0F}, {static_cast<float>(width), static_cast<float>(height)}), background(background)
 {

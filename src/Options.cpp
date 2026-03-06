@@ -1,16 +1,18 @@
-#include "options.hpp"
+#include "Options.hpp"
+#include "Logger.hpp"
 
 #include <SFML/Config.hpp>
 #include <iostream>
 #include <syncstream>
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, cppcoreguidelines-pro-bounds-pointer-arithmetic, modernize-avoid-c-arrays)
 Options::Options(int argc, char *argv[]) : m_executable(argv[0])
 {
     bool readingOptions = true;
 
     for (int i = 1; i < argc; ++i)
     {
-        std::string arg = argv[i];
+        std::string arg = argv[i]; // NOLINT(cppcoreguidelines-pro-bounds-pointer-arithmetic)
         if (arg.empty())
             continue;
 

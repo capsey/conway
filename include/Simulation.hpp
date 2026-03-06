@@ -1,10 +1,9 @@
 #pragma once
 
-#include "bitboard.hpp"
-#include "logger.hpp"
-#include "window.hpp"
+#include "BitBoard.hpp"
+#include "Logger.hpp"
 
-#include <SFML/Graphics/Color.hpp>
+#include <atomic>
 #include <condition_variable>
 #include <exception>
 #include <functional>
@@ -28,7 +27,7 @@ private:
     std::mutex m_tickingMutex;
     std::condition_variable m_tickingCondition;
 
-    std::vector<BitBoard *> m_pool;
+    std::vector<std::unique_ptr<BitBoard>> m_pool;
     std::mutex m_poolMutex;
 
     std::exception_ptr m_exception;
@@ -46,7 +45,13 @@ protected:
 public:
     Simulation(Logger &logger) : m_data(std::make_shared<const BitBoard>()), logger(logger) {}
     Simulation(Logger &logger, BitBoard data) : m_data(std::make_shared<const BitBoard>(std::move(data))), logger(logger) {}
-    ~Simulation();
+
+    Simulation(const Simulation &) = delete;
+    Simulation &operator=(const Simulation &) = delete;
+    Simulation(Simulation &&) = delete;
+    Simulation &operator=(Simulation &&) = delete;
+
+    ~Simulation() = default;
 
     void start();
     bool togglePause();
@@ -65,24 +70,4 @@ public:
         std::scoped_lock lock(m_exceptionMutex);
         return m_exception;
     }
-};
-
-class LifeWindow : public Window
-{
-protected:
-    std::shared_ptr<Simulation> simulation;
-    BitBoard drawBuffer;
-
-    void initialize() override;
-    void deinitialize() override;
-
-    void update() override;
-    void draw() override;
-
-public:
-    static constexpr sf::Color BackgroundColor = sf::Color::Black;
-    static constexpr sf::Color PausedColor = sf::Color(32, 32, 32);
-    static constexpr sf::Color CellColor = sf::Color::White;
-
-    LifeWindow(Logger &logger, unsigned int width, unsigned int height);
 };
